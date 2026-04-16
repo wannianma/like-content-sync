@@ -1,9 +1,6 @@
-# 使用阿里云镜像源加速
-# FROM node:18-alpine 改为使用阿里云公共镜像
-FROM registry.cn-hangzhou.aliyuncs.com/library/node:18-alpine
-
-# 如果阿里云镜像不可用，可以尝试其他源：
-# FROM swr.cn-north-4.myhuaweicloud.com/library/node:18-alpine
+# 使用 Node.js Alpine 镜像
+# 配合 Docker daemon.json 镜像加速器使用
+FROM node:18-alpine
 
 # 配置 Alpine apk 国内源（阿里云）
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
