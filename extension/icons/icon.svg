@@ -1,0 +1,23 @@
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon background -->
+  <rect width="128" height="128" rx="16" fill="#0066cc"/>
+
+  <!-- Cloud shape -->
+  <path d="M64 32
+           C40 32 24 48 24 64
+           C24 76 36 88 52 88
+           L52 88 L76 88
+           C92 88 104 76 104 64
+           C104 48 88 32 64 32
+           Z"
+        fill="white"/>
+
+  <!-- Sync arrow -->
+  <path d="M50 64 L64 50 L64 58 L78 58 L78 70 L64 70 L64 78 L50 64"
+        fill="#0066cc"/>
+
+  <!-- Plus symbol -->
+  <circle cx="96" cy="32" r="14" fill="#0066cc"/>
+  <rect x="90" y="24" width="12" height="16" rx="2" fill="white"/>
+  <rect x="88" y="28" width="16" height="12" rx="2" fill="white"/>
+</svg>

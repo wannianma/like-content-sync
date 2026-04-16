@@ -1,0 +1,250 @@
+.options-container {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+header h1 {
+  margin: 0 0 24px 0;
+  font-size: 24px;
+  color: #333;
+}
+
+section {
+  margin-bottom: 32px;
+  padding: 16px;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+section h2 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  color: #444;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #555;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #0066cc;
+}
+
+.input-with-toggle {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-toggle input {
+  flex: 1;
+}
+
+.btn-icon {
+  padding: 8px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.btn-icon:hover {
+  background: #e0e0e0;
+}
+
+.help-text {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #888;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: #0066cc;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #0052a3;
+}
+
+.btn-secondary {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background: #e0e0e0;
+}
+
+.btn-danger {
+  background: #d32f2f;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #b71c1c;
+}
+
+.btn-small {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.status-message {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  display: none;
+}
+
+.status-message.success {
+  display: block;
+  background: #e6f7e6;
+  color: #2d7d2d;
+}
+
+.status-message.error {
+  display: block;
+  background: #ffe6e6;
+  color: #d32f2f;
+}
+
+.section-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.item-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+}
+
+.item-list:empty::before {
+  content: 'No items';
+  display: block;
+  padding: 16px;
+  color: #888;
+  text-align: center;
+}
+
+.item {
+  padding: 12px;
+  border-bottom: 1px solid #eee;
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.item-title {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.item-meta {
+  font-size: 12px;
+  color: #888;
+}
+
+.item-tags {
+  margin-top: 4px;
+}
+
+.item-tags .tag {
+  display: inline-block;
+  background: #e0e0e0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  margin-right: 4px;
+}
+
+.rules-list {
+  margin-bottom: 16px;
+}
+
+.rule-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.rule-domain {
+  font-weight: 500;
+}
+
+.rule-tags {
+  color: #666;
+}
+
+.rule-remove {
+  background: none;
+  border: none;
+  color: #d32f2f;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.add-rule-form {
+  display: flex;
+  gap: 8px;
+}
+
+.add-rule-form input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.add-rule-form input:first-child {
+  width: 180px;
+}
+
+.add-rule-form input:nth-child(2) {
+  flex: 1;
+}

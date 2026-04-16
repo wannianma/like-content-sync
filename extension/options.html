@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Like Content Sync - Settings</title>
+  <link rel="stylesheet" href="styles/options.css">
+</head>
+<body>
+  <div class="options-container">
+    <header>
+      <h1>Like Content Sync Settings</h1>
+    </header>
+
+    <section class="settings-section">
+      <h2>API Configuration</h2>
+      <div class="form-group">
+        <label for="api-endpoint">API Endpoint</label>
+        <input type="url" id="api-endpoint" placeholder="http://localhost:3000">
+        <span class="help-text">The URL of your Like Content Sync server</span>
+      </div>
+      <div class="form-group">
+        <label for="api-key">API Key</label>
+        <div class="input-with-toggle">
+          <input type="password" id="api-key" placeholder="Enter your API key">
+          <button id="toggle-key" class="btn-icon" title="Show/Hide">👁</button>
+        </div>
+        <span class="help-text">Your authentication key for the server</span>
+      </div>
+      <div class="form-actions">
+        <button id="test-connection" class="btn btn-secondary">Test Connection</button>
+        <button id="save-settings" class="btn btn-primary">Save Settings</button>
+      </div>
+      <div id="connection-status" class="status-message"></div>
+    </section>
+
+    <section class="pending-section">
+      <h2>Pending Queue</h2>
+      <p class="help-text">Content waiting to be synced (when offline or errors occurred)</p>
+      <div id="pending-list" class="item-list"></div>
+      <div class="section-actions">
+        <button id="retry-pending" class="btn btn-secondary">Retry All</button>
+        <button id="clear-pending" class="btn btn-danger">Clear Queue</button>
+      </div>
+    </section>
+
+    <section class="history-section">
+      <h2>Recent Saves</h2>
+      <p class="help-text">Last 100 saved items</p>
+      <div id="history-list" class="item-list"></div>
+      <div class="section-actions">
+        <button id="clear-history" class="btn btn-danger">Clear History</button>
+      </div>
+    </section>
+
+    <section class="rules-section">
+      <h2>Custom Domain Rules</h2>
+      <p class="help-text">Add custom tags for specific domains</p>
+      <div id="domain-rules-list" class="rules-list"></div>
+      <div class="add-rule-form">
+        <input type="text" id="new-domain" placeholder="Domain (e.g., example.com)">
+        <input type="text" id="new-tags" placeholder="Tags (comma-separated)">
+        <button id="add-rule" class="btn btn-small">Add Rule</button>
+      </div>
+    </section>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Save to Cloud</title>
+  <link rel="stylesheet" href="styles/popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header>
+      <h2>Save to Cloud</h2>
+      <button id="close-btn" class="icon-btn" title="Close">×</button>
+    </header>
+
+    <div class="preview-section">
+      <h3>Preview</h3>
+      <div id="preview-content" class="preview-box">
+        <p class="preview-text">Loading...</p>
+        <div id="preview-images"></div>
+      </div>
+      <p id="source-info" class="source-info"></p>
+    </div>
+
+    <div class="tags-section">
+      <h3>Tags</h3>
+      <div id="selected-tags" class="tag-container"></div>
+      <div class="tag-input-row">
+        <input type="text" id="tag-input" placeholder="Add custom tag..." maxlength="50">
+        <button id="add-tag-btn" class="btn-small">+</button>
+      </div>
+      <div class="suggested-tags">
+        <span class="label">Suggested:</span>
+        <div id="suggested-tags" class="tag-container"></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="cancel-btn" class="btn btn-secondary">Cancel</button>
+      <button id="save-btn" class="btn btn-primary">Save</button>
+    </div>
+
+    <div id="status-message" class="status-message"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

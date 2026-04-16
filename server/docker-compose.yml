@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  like-content-sync:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./notes:/data/notes
+    environment:
+      - PORT=3000
+      - API_KEYS=${API_KEYS:-default-key-change-me}
+    restart: unless-stopped
