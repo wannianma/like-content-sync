@@ -4,7 +4,7 @@ services:
   like-content-sync:
     build: .
     ports:
-      - "3000:3000"
+      - "8082:3000"
     volumes:
       - ./notes:/data/notes
     environment:
