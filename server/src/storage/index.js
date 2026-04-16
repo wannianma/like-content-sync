@@ -277,11 +277,13 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
     )
       .then(result => {
         if (result.success) {
-          console.log(`Memos sync completed: ${result.memoUrl}, images uploaded: ${result.uploadedImages || 0}`);
+          console.log(`[Memos] Sync completed: ${result.memoUrl}, images: ${result.uploadedImages || 0}`);
+        } else {
+          console.warn(`[Memos] Sync failed: ${result.reason}`);
         }
       })
       .catch(err => {
-        console.error('Memos sync error:', err.message);
+        console.error('[Memos] Sync error:', err.message);
       });
   }
 

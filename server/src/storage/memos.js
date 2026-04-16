@@ -9,6 +9,49 @@ const path = require('path');
  */
 
 /**
+ * 规范化 Memos URL，提取正确的 base URL
+ * 支持：
+ * - https://memos.example.com
+ * - https://memos.example.com/
+ * - https://memos.example.com/memos (带子路径)
+ */
+function normalizeBaseUrl(url) {
+  // 移除末尾斜杠
+  let normalized = url.replace(/\/+$/, '');
+
+  // 如果 URL 包含常见路径，提取 base URL
+  // 但保留用户可能配置的子路径部署
+  const commonPaths = ['/memos', '/app', '/api'];
+  for (const p of commonPaths) {
+    if (normalized.endsWith(p)) {
+      // 用户配置了子路径，保留它
+      // 例如 https://example.com/memos -> 保持不变
+      return normalized;
+    }
+  }
+
+  return normalized;
+}
+
+/**
+ * 构建 API 路径
+ */
+function buildApiPath(baseUrl, endpoint) {
+  const normalized = normalizeBaseUrl(baseUrl);
+
+  // 检查是否已经有子路径
+  const parsedUrl = new URL(normalized);
+  const existingPath = parsedUrl.pathname;
+
+  // 如果已有子路径（如 /memos），在其后面加 API 路径
+  if (existingPath && existingPath !== '/') {
+    return `${existingPath}${endpoint}`;
+  }
+
+  return endpoint;
+}
+
+/**
  * 上传图片到 Memos
  * @param {string} baseUrl - Memos 服务器地址
  * @param {string} token - Access Token
@@ -17,11 +60,14 @@ const path = require('path');
  */
 async function uploadImageToMemos(baseUrl, token, imageBuffer, filename) {
   return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(baseUrl);
+    const normalizedUrl = normalizeBaseUrl(baseUrl);
+    const parsedUrl = new URL(normalizedUrl);
     const protocol = parsedUrl.protocol === 'https:' ? https : http;
 
-    // Memos API v1 resource endpoint
-    const apiPath = '/api/v1/resource';
+    // 构建 resource API 路径
+    const apiPath = buildApiPath(baseUrl, '/api/v1/resource');
+
+    console.log(`[Memos] Uploading image to: ${parsedUrl.host}${apiPath}`);
 
     // 构建 multipart/form-data
     const boundary = '----FormBoundary' + Date.now();
@@ -57,6 +103,7 @@ async function uploadImageToMemos(baseUrl, token, imageBuffer, filename) {
       res.on('data', (chunk) => { data += chunk; });
 
       res.on('end', () => {
+        console.log(`[Memos] Upload response: HTTP ${res.statusCode}`);
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
             const result = JSON.parse(data);
@@ -105,13 +152,15 @@ function getImageType(filename) {
  */
 async function syncToMemos(data, config, imagesDir = null) {
   if (!config.url || !config.token) {
-    console.log('Memos not configured, skipping sync');
+    console.log('[Memos] Not configured, skipping sync');
     return { success: false, reason: 'not_configured' };
   }
 
   const { title, url, content, tags, timestamp } = data;
 
   try {
+    console.log(`[Memos] Starting sync, base URL: ${config.url}`);
+
     // 处理图片：上传到 Memos 并替换链接
     let processedContent = content;
     const imageRegex = /!\[([^\]]*)\]\((images\/[^)]+)\)/g;
@@ -128,11 +177,12 @@ async function syncToMemos(data, config, imagesDir = null) {
           const imageBuffer = await fs.readFile(imagePath);
           const filename = path.basename(localPath);
 
-          console.log(`Uploading image to Memos: ${filename}`);
+          console.log(`[Memos] Uploading image: ${filename}`);
           const resource = await uploadImageToMemos(config.url, config.token, imageBuffer, filename);
 
           // Memos 使用 resource ID 引用图片
-          const memosImageUrl = `${config.url}/o/r/${resource.id}`;
+          const normalizedUrl = normalizeBaseUrl(config.url);
+          const memosImageUrl = `${normalizedUrl}/o/r/${resource.id}`;
           const newImageTag = `![${altText}](${memosImageUrl})`;
           processedContent = processedContent.replace(fullMatch, newImageTag);
 
@@ -142,9 +192,9 @@ async function syncToMemos(data, config, imagesDir = null) {
             resourceId: resource.id
           });
 
-          console.log(`Uploaded image: ${filename} -> resource ${resource.id}`);
+          console.log(`[Memos] Uploaded image: ${filename} -> resource ${resource.id}`);
         } catch (err) {
-          console.warn(`Failed to upload image ${localPath}: ${err.message}`);
+          console.warn(`[Memos] Failed to upload image ${localPath}: ${err.message}`);
           // 保留原始链接
         }
       }
@@ -163,7 +213,7 @@ async function syncToMemos(data, config, imagesDir = null) {
     }
 
     // 添加正文内容（截取部分，避免过长）
-    const maxContentLength = 4000; // 增加长度以容纳图片链接
+    const maxContentLength = 4000;
     if (processedContent.length > maxContentLength) {
       processedContent = processedContent.substring(0, maxContentLength) + '...';
     }
@@ -171,36 +221,76 @@ async function syncToMemos(data, config, imagesDir = null) {
 
     // 创建 Memo
     const result = await createMemo(config.url, config.token, memoContent);
-    console.log(`Synced to Memos: ${result.id}`);
+    console.log(`[Memos] Synced successfully: memo ID ${result.id}`);
 
     return {
       success: true,
       memoId: result.id,
-      memoUrl: `${config.url}/m/${result.id}`,
+      memoUrl: `${normalizeBaseUrl(config.url)}/m/${result.id}`,
       uploadedImages: uploadedResources.length,
       uploadedResources
     };
   } catch (err) {
-    console.error('Failed to sync to Memos:', err.message);
+    console.error('[Memos] Sync failed:', err.message);
     return { success: false, reason: err.message };
   }
 }
 
 /**
  * 调用 Memos API 创建 Memo
+ * 支持多种 API 路径尝试
  */
 async function createMemo(baseUrl, token, content) {
+  const normalizedUrl = normalizeBaseUrl(baseUrl);
+  const parsedUrl = new URL(normalizedUrl);
+  const protocol = parsedUrl.protocol === 'https:' ? https : http;
+
+  // 尝试多种 API 路径（兼容不同版本）
+  const apiPaths = [
+    '/api/v1/memo',      // Memos v0.22+
+    '/api/memo',         // Memos 旧版本
+  ];
+
+  // 如果有子路径，需要调整
+  const existingPath = parsedUrl.pathname;
+  if (existingPath && existingPath !== '/') {
+    apiPaths[0] = `${existingPath}/api/v1/memo`;
+    apiPaths[1] = `${existingPath}/api/memo`;
+  }
+
+  const body = JSON.stringify({
+    content: content,
+    visibility: 'PRIVATE'
+  });
+
+  // 尝试不同的 API 路径
+  for (const apiPath of apiPaths) {
+    console.log(`[Memos] Trying API path: ${parsedUrl.host}${apiPath}`);
+
+    try {
+      const result = await makeRequest(protocol, parsedUrl, apiPath, token, body);
+      console.log(`[Memos] Success with path: ${apiPath}`);
+      return result;
+    } catch (err) {
+      console.warn(`[Memos] Failed with path ${apiPath}: ${err.message}`);
+      // 如果是 404，尝试下一个路径
+      if (err.message.includes('404')) {
+        continue;
+      }
+      // 其他错误直接抛出
+      throw err;
+    }
+  }
+
+  // 所有路径都失败
+  throw new Error('All API paths failed. Please check MEMOS_URL configuration.');
+}
+
+/**
+ * 发送 HTTP 请求
+ */
+async function makeRequest(protocol, parsedUrl, apiPath, token, body) {
   return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(baseUrl);
-    const protocol = parsedUrl.protocol === 'https:' ? https : http;
-
-    const apiPath = '/api/v1/memo';
-
-    const body = JSON.stringify({
-      content: content,
-      visibility: 'PRIVATE'
-    });
-
     const options = {
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
@@ -253,9 +343,81 @@ function getMemosConfig() {
   };
 }
 
+/**
+ * 测试 Memos 连接
+ */
+async function testMemosConnection(url, token) {
+  try {
+    const normalizedUrl = normalizeBaseUrl(url);
+    const parsedUrl = new URL(normalizedUrl);
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
+
+    // 尝试获取用户信息来验证连接
+    const apiPaths = [
+      '/api/v1/user/me',
+      '/api/user/me',
+      '/api/v1/status'
+    ];
+
+    const existingPath = parsedUrl.pathname;
+    if (existingPath && existingPath !== '/') {
+      apiPaths[0] = `${existingPath}/api/v1/user/me`;
+    }
+
+    for (const apiPath of apiPaths) {
+      try {
+        const result = await new Promise((resolve, reject) => {
+          const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+            path: apiPath,
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          };
+
+          const req = protocol.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                try {
+                  resolve(JSON.parse(data));
+                } catch (e) {
+                  reject(new Error('Invalid JSON'));
+                }
+              } else {
+                reject(new Error(`HTTP ${res.statusCode}`));
+              }
+            });
+          });
+          req.on('error', reject);
+          req.setTimeout(10000, () => {
+            req.destroy();
+            reject(new Error('Timeout'));
+          });
+          req.end();
+        });
+
+        return { success: true, user: result };
+      } catch (err) {
+        if (err.message.includes('404')) continue;
+        throw err;
+      }
+    }
+
+    return { success: false, reason: 'Could not find valid API endpoint' };
+  } catch (err) {
+    return { success: false, reason: err.message };
+  }
+}
+
 module.exports = {
   syncToMemos,
   createMemo,
   uploadImageToMemos,
-  getMemosConfig
+  getMemosConfig,
+  normalizeBaseUrl,
+  testMemosConnection
 };
