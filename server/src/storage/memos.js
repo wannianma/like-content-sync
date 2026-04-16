@@ -64,8 +64,8 @@ async function uploadImageToMemos(baseUrl, token, imageBuffer, filename) {
     const parsedUrl = new URL(normalizedUrl);
     const protocol = parsedUrl.protocol === 'https:' ? https : http;
 
-    // 构建 resource API 路径
-    const apiPath = buildApiPath(baseUrl, '/api/v1/resource');
+    // 构建 resource API 路径（旧版使用 /api/resource）
+    const apiPath = buildApiPath(baseUrl, '/api/resource');
 
     console.log(`[Memos] Uploading image to: ${parsedUrl.host}${apiPath}`);
 
@@ -246,9 +246,10 @@ async function createMemo(baseUrl, token, content) {
   const protocol = parsedUrl.protocol === 'https:' ? https : http;
 
   // 尝试多种 API 路径（兼容不同版本）
+  // 注意：旧版 Memos 使用 /api/memo，新版使用 /api/v1/memo
   const apiPaths = [
+    '/api/memo',         // Memos 旧版本 (优先尝试，因为你的服务器使用这个)
     '/api/v1/memo',      // Memos v0.22+
-    '/api/memo',         // Memos 旧版本
   ];
 
   // 如果有子路径，需要调整
