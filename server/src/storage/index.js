@@ -170,7 +170,7 @@ async function processContentImages(apiKeyHash, content) {
       const filePath = path.join(imagesDir, filename);
 
       await fs.writeFile(filePath, buffer);
-      const localUrl = `images/${filename}`;
+      const localUrl = `images/user-${apiKeyHash}/${filename}`;
 
       // Replace URL in content
       const newImageTag = `![${imageInfo.alt}](${localUrl})`;
@@ -180,6 +180,7 @@ async function processContentImages(apiKeyHash, content) {
         originalUrl: imageInfo.url,
         localUrl: localUrl,
         filename: filename,
+        apiKeyHash: apiKeyHash,
         size: buffer.length
       });
 
@@ -238,7 +239,7 @@ async function saveImage(apiKeyHash, imageBuffer, filename) {
   const filePath = path.join(imagesDir, filename);
   await fs.writeFile(filePath, imageBuffer);
 
-  return `images/${filename}`;
+  return `images/user-${apiKeyHash}/${filename}`;
 }
 
 /**

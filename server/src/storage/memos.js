@@ -180,16 +180,12 @@ async function syncToMemos(data, config, imagesDir = null) {
         imageUrls.push({ localPath, imageUrl });
         console.log(`[Memos] Image URL: ${localPath} -> ${imageUrl}`);
       } else {
-        // 没有 SERVER_URL，保留原始链接（可能无法在 Memos 中访问）
         console.warn(`[Memos] No SERVER_URL configured, image ${localPath} will not be accessible in Memos`);
       }
     }
 
-    // 构建 Memos 内容格式
+    // 构建 Memos 内容格式（来源放在最后）
     let memoContent = '';
-
-    // 添加来源链接
-    memoContent += `📍 来源: [${title}](${url})\n\n`;
 
     // 添加标签（Memos 使用 #tag 格式）
     if (tags && tags.length > 0) {
@@ -199,10 +195,16 @@ async function syncToMemos(data, config, imagesDir = null) {
 
     // 添加正文内容（截取部分，避免过长）
     const maxContentLength = 4000;
-    if (processedContent.length > maxContentLength) {
-      processedContent = processedContent.substring(0, maxContentLength) + '...';
+    // 预留来源链接的空间
+    const sourceLength = 50 + title.length + url.length;
+    const availableLength = maxContentLength - sourceLength;
+    if (processedContent.length > availableLength) {
+      processedContent = processedContent.substring(0, availableLength) + '...';
     }
     memoContent += processedContent;
+
+    // 来源链接放在最后
+    memoContent += `\n\n---\n\n📍 来源: [${title}](${url})`;
 
     // 创建 Memo
     const result = await createMemo(config.url, config.token, memoContent);
