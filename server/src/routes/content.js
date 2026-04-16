@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const storage = require('../storage');
+const memosSync = require('../storage/memos');
 
 const router = express.Router();
 
@@ -101,7 +102,8 @@ router.post('/', upload.array('images', 10), async (req, res) => {
       success: true,
       uploadedImages: uploadedImageUrls.length,
       downloadedImages: result.downloadedImages.length,
-      downloadedDetails: result.downloadedImages
+      downloadedDetails: result.downloadedImages,
+      memosEnabled: Boolean(memosSync.getMemosConfig().url && memosSync.getMemosConfig().token)
     });
   } catch (err) {
     console.error('Error saving content:', err);

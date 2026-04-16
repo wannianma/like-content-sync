@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+const memosSync = require('./memos');
 
 // Use local data directory for development, /data/notes for Docker deployment
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -263,6 +264,21 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
   }
 
   await fs.appendFile(dailyFile, header + entry);
+
+  // 异步同步到 Memos（不阻塞主流程）
+  const memosConfig = memosSync.getMemosConfig();
+  if (memosConfig.url && memosConfig.token) {
+    // 异步执行，不等待结果
+    memosSync.syncToMemos({ title, url, content: processedContent, tags, timestamp }, memosConfig)
+      .then(result => {
+        if (result.success) {
+          console.log(`Memos sync completed: ${result.memoUrl}`);
+        }
+      })
+      .catch(err => {
+        console.error('Memos sync error:', err.message);
+      });
+  }
 
   return { downloadedImages };
 }
