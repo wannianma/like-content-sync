@@ -246,6 +246,7 @@ async function saveImage(apiKeyHash, imageBuffer, filename) {
  */
 async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestamp) {
   const dailyFile = getDailyFilePath(apiKeyHash, new Date(timestamp));
+  const imagesDir = getUserDir(apiKeyHash); // 用户目录，包含 images 子目录
 
   await initUserDirs(apiKeyHash);
 
@@ -268,11 +269,15 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
   // 异步同步到 Memos（不阻塞主流程）
   const memosConfig = memosSync.getMemosConfig();
   if (memosConfig.url && memosConfig.token) {
-    // 异步执行，不等待结果
-    memosSync.syncToMemos({ title, url, content: processedContent, tags, timestamp }, memosConfig)
+    // 异步执行，不等待结果，传递图片目录路径用于上传
+    memosSync.syncToMemos(
+      { title, url, content: processedContent, tags, timestamp },
+      memosConfig,
+      imagesDir
+    )
       .then(result => {
         if (result.success) {
-          console.log(`Memos sync completed: ${result.memoUrl}`);
+          console.log(`Memos sync completed: ${result.memoUrl}, images uploaded: ${result.uploadedImages || 0}`);
         }
       })
       .catch(err => {
