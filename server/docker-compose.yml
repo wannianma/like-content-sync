@@ -14,4 +14,6 @@ services:
       # Memos 同步配置（可选）
       - MEMOS_URL=${MEMOS_URL:-}
       - MEMOS_TOKEN=${MEMOS_TOKEN:-}
+      # 服务器公网地址（用于图片 URL）
+      - SERVER_URL=${SERVER_URL:-}
     restart: unless-stopped

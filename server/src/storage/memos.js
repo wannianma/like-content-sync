@@ -145,9 +145,9 @@ function getImageType(filename) {
 }
 
 /**
- * 同步内容到 Memos（支持图片上传）
+ * 同步内容到 Memos（图片使用本地 URL）
  * @param {Object} data - 内容数据
- * @param {Object} config - Memos 配置 { url, token }
+ * @param {Object} config - Memos 配置 { url, token, serverUrl }
  * @param {string} imagesDir - 本地图片目录路径
  */
 async function syncToMemos(data, config, imagesDir = null) {
@@ -157,46 +157,31 @@ async function syncToMemos(data, config, imagesDir = null) {
   }
 
   const { title, url, content, tags, timestamp } = data;
+  const serverUrl = config.serverUrl || process.env.SERVER_URL || '';
 
   try {
     console.log(`[Memos] Starting sync, base URL: ${config.url}`);
+    console.log(`[Memos] Server URL for images: ${serverUrl || 'not configured'}`);
 
-    // 处理图片：上传到 Memos 并替换链接
+    // 处理图片：将本地路径转换为公网 URL
     let processedContent = content;
     const imageRegex = /!\[([^\]]*)\]\((images\/[^)]+)\)/g;
     let match;
-    const uploadedResources = [];
+    const imageUrls = [];
 
     while ((match = imageRegex.exec(content)) !== null) {
       const [fullMatch, altText, localPath] = match;
-      const imagePath = imagesDir ? path.join(imagesDir, localPath) : null;
 
-      if (imagePath) {
-        try {
-          // 读取本地图片文件
-          const imageBuffer = await fs.readFile(imagePath);
-          const filename = path.basename(localPath);
-
-          console.log(`[Memos] Uploading image: ${filename}`);
-          const resource = await uploadImageToMemos(config.url, config.token, imageBuffer, filename);
-
-          // Memos 使用 resource ID 引用图片
-          const normalizedUrl = normalizeBaseUrl(config.url);
-          const memosImageUrl = `${normalizedUrl}/o/r/${resource.id}`;
-          const newImageTag = `![${altText}](${memosImageUrl})`;
-          processedContent = processedContent.replace(fullMatch, newImageTag);
-
-          uploadedResources.push({
-            localPath,
-            memosUrl: memosImageUrl,
-            resourceId: resource.id
-          });
-
-          console.log(`[Memos] Uploaded image: ${filename} -> resource ${resource.id}`);
-        } catch (err) {
-          console.warn(`[Memos] Failed to upload image ${localPath}: ${err.message}`);
-          // 保留原始链接
-        }
+      // 将本地路径转换为公网 URL
+      if (serverUrl) {
+        const imageUrl = `${serverUrl}/${localPath}`;
+        const newImageTag = `![${altText}](${imageUrl})`;
+        processedContent = processedContent.replace(fullMatch, newImageTag);
+        imageUrls.push({ localPath, imageUrl });
+        console.log(`[Memos] Image URL: ${localPath} -> ${imageUrl}`);
+      } else {
+        // 没有 SERVER_URL，保留原始链接（可能无法在 Memos 中访问）
+        console.warn(`[Memos] No SERVER_URL configured, image ${localPath} will not be accessible in Memos`);
       }
     }
 
@@ -227,8 +212,8 @@ async function syncToMemos(data, config, imagesDir = null) {
       success: true,
       memoId: result.id,
       memoUrl: `${normalizeBaseUrl(config.url)}/m/${result.id}`,
-      uploadedImages: uploadedResources.length,
-      uploadedResources
+      imageCount: imageUrls.length,
+      imageUrls
     };
   } catch (err) {
     console.error('[Memos] Sync failed:', err.message);
@@ -342,7 +327,8 @@ async function makeRequest(protocol, parsedUrl, apiPath, token, body) {
 function getMemosConfig() {
   return {
     url: process.env.MEMOS_URL || '',
-    token: process.env.MEMOS_TOKEN || ''
+    token: process.env.MEMOS_TOKEN || '',
+    serverUrl: process.env.SERVER_URL || ''
   };
 }
 

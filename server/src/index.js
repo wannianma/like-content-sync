@@ -6,6 +6,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SERVER_URL = process.env.SERVER_URL || '';
 
 // Middleware
 app.use(cors());
@@ -25,9 +26,41 @@ ensureDir(DATA_DIR).then(() => {
   console.error('Failed to create data directory:', err);
 });
 
+// Serve static images (for Memos to access)
+// Mount each user's images directory under /images/user-{hash}/
+const fs = require('fs');
+const dataPath = DATA_DIR;
+if (fs.existsSync(dataPath)) {
+  const userDirs = fs.readdirSync(dataPath).filter(d => d.startsWith('user-'));
+  for (const userDir of userDirs) {
+    const imagesPath = path.join(dataPath, userDir, 'images');
+    if (fs.existsSync(imagesPath)) {
+      app.use(`/images/${userDir}`, express.static(imagesPath));
+      console.log(`Static images served: /images/${userDir}`);
+    }
+  }
+}
+
+// Dynamic static serving for new users
+app.use('/images', (req, res, next) => {
+  const imagePath = path.join(DATA_DIR, req.path);
+  if (fs.existsSync(imagePath)) {
+    res.sendFile(imagePath);
+  } else {
+    next();
+  }
+});
+
+console.log(`Server URL for images: ${SERVER_URL || 'not configured, images will use relative URLs'}`);
+
 // Health check (no auth required)
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    serverUrl: SERVER_URL,
+    dataDir: DATA_DIR
+  });
 });
 
 // Content API (requires auth if configured)
