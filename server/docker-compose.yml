@@ -9,5 +9,6 @@ services:
       - ./notes:/data/notes
     environment:
       - PORT=3000
+      - DATA_DIR=/data/notes
       - API_KEYS=${API_KEYS:-default-key-change-me}
     restart: unless-stopped
