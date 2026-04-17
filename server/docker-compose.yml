@@ -16,4 +16,9 @@ services:
       - MEMOS_TOKEN=${MEMOS_TOKEN:-}
       # 服务器公网地址（用于图片 URL）
       - SERVER_URL=${SERVER_URL:-}
+      # 七牛云图片存储配置（可选）
+      - QINIU_ACCESS_KEY=${QINIU_ACCESS_KEY:-}
+      - QINIU_SECRET_KEY=${QINIU_SECRET_KEY:-}
+      - QINIU_BUCKET=${QINIU_BUCKET:-}
+      - QINIU_DOMAIN=${QINIU_DOMAIN:-}
     restart: unless-stopped
