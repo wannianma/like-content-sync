@@ -130,6 +130,7 @@ async function downloadImage(url) {
 
 /**
  * Extract image URLs from markdown content
+ * Includes both external URLs and local images that need Qiniu upload
  */
 function extractImageUrlsFromContent(content) {
   const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
@@ -138,9 +139,21 @@ function extractImageUrlsFromContent(content) {
 
   while ((match = regex.exec(content)) !== null) {
     const url = match[2];
-    // Only download external URLs (not already local images/)
-    if (url && !url.startsWith('images/') && !url.startsWith('data:') && (url.startsWith('http://') || url.startsWith('https://'))) {
+    // External URLs (http/https) - need download
+    if (url && !url.startsWith('data:') && (url.startsWith('http://') || url.startsWith('https://'))) {
+      if (!url.startsWith('images/')) { // Not already a local path
+        images.push({
+          type: 'external',
+          fullMatch: match[0],
+          alt: match[1],
+          url: url
+        });
+      }
+    }
+    // Local images (images/) - need Qiniu upload if configured
+    if (url && url.startsWith('images/')) {
       images.push({
+        type: 'local',
         fullMatch: match[0],
         alt: match[1],
         url: url
@@ -154,6 +167,7 @@ function extractImageUrlsFromContent(content) {
 /**
  * Download images from content and replace URLs with local paths
  * Also upload to Qiniu for Memos display
+ * Handles both external URLs and local images that need Qiniu upload
  */
 async function processContentImages(apiKeyHash, content) {
   const images = extractImageUrlsFromContent(content);
@@ -165,42 +179,80 @@ async function processContentImages(apiKeyHash, content) {
 
   for (const imageInfo of images) {
     try {
-      console.log(`Downloading image: ${imageInfo.url}`);
+      if (imageInfo.type === 'external') {
+        // Download external image
+        console.log(`Downloading image: ${imageInfo.url}`);
 
-      const { buffer, ext } = await downloadImage(imageInfo.url);
-      const filename = generateImageFilename(`image${ext}`);
-      const filePath = path.join(imagesDir, filename);
+        const { buffer, ext } = await downloadImage(imageInfo.url);
+        const filename = generateImageFilename(`image${ext}`);
+        const filePath = path.join(imagesDir, filename);
 
-      // Save local copy
-      await fs.writeFile(filePath, buffer);
-      const localUrl = `images/user-${apiKeyHash}/${filename}`;
+        // Save local copy
+        await fs.writeFile(filePath, buffer);
+        const localUrl = `images/user-${apiKeyHash}/${filename}`;
 
-      // Upload to Qiniu (if configured)
-      let qiniuUrl = null;
-      if (qiniuUpload.isQiniuEnabled()) {
-        const qiniuResult = await qiniuUpload.uploadImage(buffer, filename, apiKeyHash);
-        if (qiniuResult.success) {
-          qiniuUrl = qiniuResult.url;
-          console.log(`[Qiniu] Image uploaded: ${qiniuUrl}`);
+        // Upload to Qiniu (if configured)
+        let qiniuUrl = null;
+        if (qiniuUpload.isQiniuEnabled()) {
+          const qiniuResult = await qiniuUpload.uploadImage(buffer, filename, apiKeyHash);
+          if (qiniuResult.success) {
+            qiniuUrl = qiniuResult.url;
+            console.log(`[Qiniu] Image uploaded: ${qiniuUrl}`);
+          }
+        }
+
+        // Replace URL in content (use local URL for local file)
+        const newImageTag = `![${imageInfo.alt}](${localUrl})`;
+        updatedContent = updatedContent.replace(imageInfo.fullMatch, newImageTag);
+
+        downloadedImages.push({
+          originalUrl: imageInfo.url,
+          localUrl: localUrl,
+          qiniuUrl: qiniuUrl,
+          filename: filename,
+          apiKeyHash: apiKeyHash,
+          size: buffer.length
+        });
+
+        console.log(`Saved image: ${filename} (${buffer.length} bytes)`);
+      } else if (imageInfo.type === 'local') {
+        // Handle existing local image - upload to Qiniu if configured
+        const localPath = imageInfo.url;
+        console.log(`Processing local image: ${localPath}`);
+
+        // Extract filename and user hash from path (images/user-{hash}/{filename})
+        const pathParts = localPath.split('/');
+        const userHash = pathParts[1]; // user-{hash}
+        const filename = pathParts[2]; // filename
+
+        // Only upload if Qiniu is configured
+        if (qiniuUpload.isQiniuEnabled()) {
+          // Read local file - actual path is {DATA_DIR}/{userHash}/images/{filename}
+          const filePath = path.join(DATA_DIR, userHash, 'images', filename);
+          try {
+            await fs.access(filePath);
+            const buffer = await fs.readFile(filePath);
+
+            // Upload to Qiniu (use the user hash from the path)
+            const qiniuResult = await qiniuUpload.uploadImage(buffer, filename, userHash.replace('user-', ''));
+            if (qiniuResult.success) {
+              console.log(`[Qiniu] Local image uploaded: ${qiniuResult.url}`);
+              downloadedImages.push({
+                originalUrl: localPath,
+                localUrl: localPath,
+                qiniuUrl: qiniuResult.url,
+                filename: filename,
+                apiKeyHash: userHash.replace('user-', ''),
+                size: buffer.length
+              });
+            }
+          } catch (accessErr) {
+            console.warn(`Local image file not found: ${filePath}`);
+          }
         }
       }
-
-      // Replace URL in content (use local URL for local file, Qiniu URL tracked separately)
-      const newImageTag = `![${imageInfo.alt}](${localUrl})`;
-      updatedContent = updatedContent.replace(imageInfo.fullMatch, newImageTag);
-
-      downloadedImages.push({
-        originalUrl: imageInfo.url,
-        localUrl: localUrl,
-        qiniuUrl: qiniuUrl,
-        filename: filename,
-        apiKeyHash: apiKeyHash,
-        size: buffer.length
-      });
-
-      console.log(`Saved image: ${filename} (${buffer.length} bytes)`);
     } catch (err) {
-      console.warn(`Failed to download image ${imageInfo.url}: ${err.message}`);
+      console.warn(`Failed to process image ${imageInfo.url}: ${err.message}`);
       // Keep original URL if download fails
     }
   }
