@@ -12,6 +12,36 @@
   let currentSelection = null;
 
   /**
+   * Handle scroll position on page load
+   * Detect #scroll=N% fragment and scroll to that position
+   */
+  function handleScrollFragment() {
+    const hash = window.location.hash;
+    if (hash.startsWith('#scroll=')) {
+      const percentMatch = hash.match(/scroll=(\d+)/);
+      if (percentMatch) {
+        const percent = parseInt(percentMatch[1], 10);
+        if (percent >= 0 && percent <= 100) {
+          const docHeight = document.documentElement.scrollHeight;
+          const scrollTo = (percent / 100) * docHeight;
+
+          // Scroll after page is fully loaded
+          if (document.readyState === 'complete') {
+            window.scrollTo(0, scrollTo);
+          } else {
+            window.addEventListener('load', () => {
+              setTimeout(() => window.scrollTo(0, scrollTo), 100);
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // Execute scroll handling on script load
+  handleScrollFragment();
+
+  /**
    * Convert HTML element to Markdown
    */
   function htmlToMarkdown(element) {
@@ -609,6 +639,98 @@
   }
 
   /**
+   * Generate URL with anchor or scroll position for precise content location
+   * Priority: 1) Element ID anchor, 2) Parent element ID, 3) Scroll position percentage
+   */
+  function generateLocationUrl(selection) {
+    const baseUrl = window.location.href.split('#')[0]; // Remove existing fragment
+
+    if (!selection.rangeCount) {
+      return baseUrl;
+    }
+
+    const range = selection.getRangeAt(0);
+    let element = range.startContainer;
+
+    // Get the actual element (if text node, get parent)
+    if (element.nodeType === Node.TEXT_NODE) {
+      element = element.parentElement;
+    }
+
+    // Priority 1: Find element ID
+    let anchorId = findElementId(element);
+
+    if (anchorId) {
+      return `${baseUrl}#${anchorId}`;
+    }
+
+    // Priority 2: Calculate scroll position percentage
+    const scrollPercent = calculateScrollPosition(element);
+
+    if (scrollPercent !== null) {
+      return `${baseUrl}#scroll=${Math.round(scrollPercent)}`;
+    }
+
+    // Fallback: return base URL
+    return baseUrl;
+  }
+
+  /**
+   * Find element ID, searching up to parent elements
+   */
+  function findElementId(element) {
+    let current = element;
+    const maxDepth = 10; // Limit search depth
+
+    for (let i = 0; i < maxDepth && current; i++) {
+      // Check for id attribute
+      if (current.id && current.id.trim()) {
+        return current.id.trim();
+      }
+
+      // Check for other identifying attributes
+      // Common patterns: data-id, name, data-comment-id, etc.
+      const identifyingAttrs = ['name', 'data-id', 'data-comment-id', 'data-post-id'];
+      for (const attr of identifyingAttrs) {
+        const value = current.getAttribute(attr);
+        if (value && value.trim()) {
+          return value.trim();
+        }
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  }
+
+  /**
+   * Calculate scroll position percentage for element
+   */
+  function calculateScrollPosition(element) {
+    try {
+      const rect = element.getBoundingClientRect();
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const elementTop = rect.top + scrollTop;
+
+      // Get total document height
+      const docHeight = document.documentElement.scrollHeight;
+
+      if (docHeight <= 0) {
+        return null;
+      }
+
+      // Calculate percentage (0-100)
+      const percent = (elementTop / docHeight) * 100;
+
+      // Clamp to valid range
+      return Math.max(0, Math.min(100, percent));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Handle message from background script
    */
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -628,9 +750,12 @@
         return true;
       }
 
+      // Generate URL with anchor or scroll position for precise location
+      const locationUrl = generateLocationUrl(selection);
+
       const data = {
         title: document.title,
-        url: window.location.href,
+        url: locationUrl,
         content: text,
         images: images,
         domain: window.location.hostname
