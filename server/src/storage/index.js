@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
 const memosSync = require('./memos');
+const qiniuUpload = require('./qiniu');
 
 // Use local data directory for development, /data/notes for Docker deployment
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -152,6 +153,7 @@ function extractImageUrlsFromContent(content) {
 
 /**
  * Download images from content and replace URLs with local paths
+ * Also upload to Qiniu for Memos display
  */
 async function processContentImages(apiKeyHash, content) {
   const images = extractImageUrlsFromContent(content);
@@ -169,16 +171,28 @@ async function processContentImages(apiKeyHash, content) {
       const filename = generateImageFilename(`image${ext}`);
       const filePath = path.join(imagesDir, filename);
 
+      // Save local copy
       await fs.writeFile(filePath, buffer);
       const localUrl = `images/user-${apiKeyHash}/${filename}`;
 
-      // Replace URL in content
+      // Upload to Qiniu (if configured)
+      let qiniuUrl = null;
+      if (qiniuUpload.isQiniuEnabled()) {
+        const qiniuResult = await qiniuUpload.uploadImage(buffer, filename, apiKeyHash);
+        if (qiniuResult.success) {
+          qiniuUrl = qiniuResult.url;
+          console.log(`[Qiniu] Image uploaded: ${qiniuUrl}`);
+        }
+      }
+
+      // Replace URL in content (use local URL for local file, Qiniu URL tracked separately)
       const newImageTag = `![${imageInfo.alt}](${localUrl})`;
       updatedContent = updatedContent.replace(imageInfo.fullMatch, newImageTag);
 
       downloadedImages.push({
         originalUrl: imageInfo.url,
         localUrl: localUrl,
+        qiniuUrl: qiniuUrl,
         filename: filename,
         apiKeyHash: apiKeyHash,
         size: buffer.length
@@ -231,6 +245,7 @@ async function initUserDirs(apiKeyHash) {
 
 /**
  * Save image to user's images directory
+ * Also upload to Qiniu if configured
  */
 async function saveImage(apiKeyHash, imageBuffer, filename) {
   const imagesDir = getImagesDir(apiKeyHash);
@@ -239,20 +254,40 @@ async function saveImage(apiKeyHash, imageBuffer, filename) {
   const filePath = path.join(imagesDir, filename);
   await fs.writeFile(filePath, imageBuffer);
 
-  return `images/user-${apiKeyHash}/${filename}`;
+  const localUrl = `images/user-${apiKeyHash}/${filename}`;
+
+  // Upload to Qiniu if configured
+  let qiniuUrl = null;
+  if (qiniuUpload.isQiniuEnabled()) {
+    const qiniuResult = await qiniuUpload.uploadImage(imageBuffer, filename, apiKeyHash);
+    if (qiniuResult.success) {
+      qiniuUrl = qiniuResult.url;
+    }
+  }
+
+  return { localUrl, qiniuUrl };
 }
 
 /**
  * Append content to daily markdown file
+ * @param {string} apiKeyHash - User API key hash
+ * @param {string} title - Page title
+ * @param {string} url - Source URL
+ * @param {string} content - Markdown content
+ * @param {Array} tags - Tags array
+ * @param {string} timestamp - ISO timestamp
+ * @param {Array} uploadedImages - Uploaded images info [{ localUrl, qiniuUrl, filename }]
  */
-async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestamp) {
+async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestamp, uploadedImages = []) {
   const dailyFile = getDailyFilePath(apiKeyHash, new Date(timestamp));
-  const imagesDir = getUserDir(apiKeyHash); // 用户目录，包含 images 子目录
 
   await initUserDirs(apiKeyHash);
 
   // Process images in content (download and replace URLs)
   const { content: processedContent, downloadedImages } = await processContentImages(apiKeyHash, content);
+
+  // Merge uploaded images with downloaded images for Memos sync
+  const allImages = [...uploadedImages, ...downloadedImages];
 
   const entry = formatMarkdownEntry(title, url, processedContent, tags, timestamp);
 
@@ -270,15 +305,16 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
   // 异步同步到 Memos（不阻塞主流程）
   const memosConfig = memosSync.getMemosConfig();
   if (memosConfig.url && memosConfig.token) {
-    // 异步执行，不等待结果，传递图片目录路径用于上传
+    // 异步执行，不等待结果，传递图片信息（含七牛URL）
     memosSync.syncToMemos(
       { title, url, content: processedContent, tags, timestamp },
       memosConfig,
-      imagesDir
+      allImages // 包含上传图片和下载图片的完整信息
     )
       .then(result => {
         if (result.success) {
-          console.log(`[Memos] Sync completed: ${result.memoUrl}, images: ${result.uploadedImages || 0}`);
+          const qiniuCount = allImages.filter(img => img.qiniuUrl).length;
+          console.log(`[Memos] Sync completed: ${result.memoUrl}, total images: ${allImages.length}, Qiniu: ${qiniuCount}`);
         } else {
           console.warn(`[Memos] Sync failed: ${result.reason}`);
         }

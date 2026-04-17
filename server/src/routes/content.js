@@ -69,22 +69,22 @@ router.post('/', upload.array('images', 10), async (req, res) => {
     }
 
     const apiKeyHash = req.apiKeyHash;
-    const uploadedImageUrls = [];
+    const uploadedImages = [];
 
     // Save uploaded image files
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const filename = storage.generateImageFilename(file.originalname);
-        const imageUrl = await storage.saveImage(apiKeyHash, file.buffer, filename);
-        uploadedImageUrls.push(imageUrl);
+        const { localUrl, qiniuUrl } = await storage.saveImage(apiKeyHash, file.buffer, filename);
+        uploadedImages.push({ localUrl, qiniuUrl, filename });
       }
     }
 
-    // Append uploaded images to content
+    // Append uploaded images to content (use local URL for local file, Qiniu URL tracked separately)
     let finalContent = content;
-    if (uploadedImageUrls.length > 0) {
-      for (const imageUrl of uploadedImageUrls) {
-        finalContent += `\n\n![uploaded image](${imageUrl})`;
+    if (uploadedImages.length > 0) {
+      for (const img of uploadedImages) {
+        finalContent += `\n\n![uploaded image](${img.localUrl})`;
       }
     }
 
@@ -95,12 +95,16 @@ router.post('/', upload.array('images', 10), async (req, res) => {
       url,
       finalContent,
       parsedTags,
-      timestamp
+      timestamp,
+      uploadedImages // Pass uploaded images info for Memos sync
     );
+
+    const qiniuImageCount = [...uploadedImages, ...result.downloadedImages].filter(img => img.qiniuUrl).length;
 
     res.json({
       success: true,
-      uploadedImages: uploadedImageUrls.length,
+      uploadedImages: uploadedImages.length,
+      qiniuImages: qiniuImageCount,
       downloadedImages: result.downloadedImages.length,
       downloadedDetails: result.downloadedImages,
       memosEnabled: Boolean(memosSync.getMemosConfig().url && memosSync.getMemosConfig().token)

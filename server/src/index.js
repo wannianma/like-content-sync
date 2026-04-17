@@ -1,8 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const path = require('path');
 
-dotenv.config();
+// Load .env from server directory
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
+
+// Debug: Log Qiniu config status
+console.log('[Debug] QINIU_ACCESS_KEY:', process.env.QINIU_ACCESS_KEY ? 'SET' : 'NOT SET');
+console.log('[Debug] QINIU_SECRET_KEY:', process.env.QINIU_SECRET_KEY ? 'SET' : 'NOT SET');
+console.log('[Debug] QINIU_BUCKET:', process.env.QINIU_BUCKET || 'NOT SET');
+console.log('[Debug] QINIU_DOMAIN:', process.env.QINIU_DOMAIN || 'NOT SET');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,7 +24,6 @@ app.use(express.json());
 const { validateApiKeyIfConfigured } = require('./middleware/auth');
 const contentRoutes = require('./routes/content');
 const { ensureDir } = require('./storage');
-const path = require('path');
 
 // Initialize data directory
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');

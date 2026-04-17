@@ -9,9 +9,8 @@
   let selectedTags = [];
 
   // Elements
-  const previewContent = document.getElementById('preview-content');
-  const previewText = document.querySelector('.preview-text');
-  const previewImages = document.getElementById('preview-images');
+  const editTitle = document.getElementById('edit-title');
+  const editContent = document.getElementById('edit-content');
   const sourceInfo = document.getElementById('source-info');
   const selectedTagsContainer = document.getElementById('selected-tags');
   const suggestedTagsContainer = document.getElementById('suggested-tags');
@@ -30,7 +29,7 @@
     chrome.runtime.sendMessage({ action: 'getSelection' }, (response) => {
       if (response) {
         currentSelection = response;
-        renderPreview();
+        renderEditFields();
         generateSuggestedTags();
       } else {
         showError('No content available');
@@ -50,33 +49,19 @@
   }
 
   /**
-   * Render preview
+   * Render edit fields
    */
-  function renderPreview() {
+  function renderEditFields() {
     if (!currentSelection) return;
 
-    // Truncate content for preview
-    const previewLength = 200;
-    const contentPreview = currentSelection.content.length > previewLength
-      ? currentSelection.content.substring(0, previewLength) + '...'
-      : currentSelection.content;
+    // Set title
+    editTitle.value = currentSelection.title || '';
 
-    previewText.textContent = contentPreview || 'No text content';
-
-    // Show images
-    previewImages.innerHTML = '';
-    if (currentSelection.images && currentSelection.images.length > 0) {
-      for (const img of currentSelection.images) {
-        const imgEl = document.createElement('img');
-        imgEl.src = img.src;
-        imgEl.alt = img.alt || '';
-        imgEl.onerror = () => imgEl.style.display = 'none';
-        previewImages.appendChild(imgEl);
-      }
-    }
+    // Set content
+    editContent.value = currentSelection.content || '';
 
     // Show source info
-    sourceInfo.innerHTML = `<a href="${currentSelection.url}" target="_blank">${currentSelection.title}</a>`;
+    sourceInfo.innerHTML = `Source: <a href="${currentSelection.url}" target="_blank">${currentSelection.url}</a>`;
   }
 
   /**
@@ -252,11 +237,15 @@
     saveBtn.disabled = true;
     showStatus('Saving...', 'loading');
 
+    // Get edited values
+    const editedTitle = editTitle.value.trim() || currentSelection.title;
+    const editedContent = editContent.value.trim() || currentSelection.content;
+
     // Prepare data
     const data = {
-      title: currentSelection.title,
+      title: editedTitle,
       url: currentSelection.url,
-      content: currentSelection.content,
+      content: editedContent,
       tags: selectedTags,
       timestamp: new Date().toISOString(),
       imageFiles: []
@@ -323,8 +312,10 @@
    * Show error
    */
   function showError(message) {
-    previewText.textContent = message;
-    previewContent.style.background = '#ffe6e6';
+    editContent.value = message;
+    editContent.style.background = '#ffe6e6';
+    editContent.disabled = true;
+    editTitle.disabled = true;
     saveBtn.disabled = true;
   }
 

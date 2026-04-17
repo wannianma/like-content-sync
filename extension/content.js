@@ -224,24 +224,44 @@
           line-height: 1;
         }
         .lcs-close:hover { color: #666; }
-        .lcs-preview {
+        .lcs-edit-section {
           padding: 16px 20px;
         }
-        .lcs-preview-label {
+        .lcs-edit-label {
           font-size: 12px;
           color: #666;
-          margin-bottom: 8px;
+          margin-bottom: 4px;
         }
-        .lcs-preview-box {
-          background: #f5f5f5;
-          border-radius: 8px;
+        .lcs-edit-title {
+          width: 100%;
+          padding: 8px 12px;
+          border: 1px solid #ddd;
+          border-radius: 6px;
+          font-size: 14px;
+          margin-bottom: 12px;
+          box-sizing: border-box;
+        }
+        .lcs-edit-title:focus {
+          outline: none;
+          border-color: #0066cc;
+        }
+        .lcs-edit-content {
+          width: 100%;
+          min-height: 120px;
+          max-height: 300px;
           padding: 12px;
-          max-height: 120px;
-          overflow-y: auto;
+          border: 1px solid #ddd;
+          border-radius: 6px;
           font-size: 13px;
           line-height: 1.5;
+          resize: vertical;
           white-space: pre-wrap;
           word-break: break-word;
+          box-sizing: border-box;
+        }
+        .lcs-edit-content:focus {
+          outline: none;
+          border-color: #0066cc;
         }
         .lcs-source {
           margin-top: 8px;
@@ -376,10 +396,12 @@
           <h3>Save to Cloud</h3>
           <button class="lcs-close">×</button>
         </div>
-        <div class="lcs-preview">
-          <div class="lcs-preview-label">Preview</div>
-          <div class="lcs-preview-box">${escapeHtml(selectionData.content.substring(0, 200))}${selectionData.content.length > 200 ? '...' : ''}</div>
-          <div class="lcs-source">Source: <a href="${escapeHtml(selectionData.url)}" target="_blank">${escapeHtml(selectionData.title)}</a></div>
+        <div class="lcs-edit-section">
+          <div class="lcs-edit-label">Title</div>
+          <input type="text" class="lcs-edit-title" id="lcs-edit-title" value="${escapeHtml(selectionData.title)}">
+          <div class="lcs-edit-label">Content</div>
+          <textarea class="lcs-edit-content" id="lcs-edit-content">${escapeHtml(selectionData.content)}</textarea>
+          <div class="lcs-source">Source: <a href="${escapeHtml(selectionData.url)}" target="_blank">${escapeHtml(selectionData.url)}</a></div>
         </div>
         <div class="lcs-tags-section">
           <div class="lcs-tags-label">Tags</div>
@@ -418,6 +440,8 @@
     const saveBtn = modal.querySelector('#lcs-save');
     const tagInput = modal.querySelector('#lcs-tag-input');
     const tagAddBtn = modal.querySelector('#lcs-tag-add');
+    const editTitleInput = modal.querySelector('#lcs-edit-title');
+    const editContentInput = modal.querySelector('#lcs-edit-content');
 
     function closeModal() {
       modal.remove();
@@ -446,10 +470,14 @@
       saveBtn.disabled = true;
       showStatus('Saving...', 'loading');
 
+      // Get edited values
+      const editedTitle = editTitleInput.value.trim() || currentSelection.title;
+      const editedContent = editContentInput.value.trim() || currentSelection.content;
+
       const data = {
-        title: currentSelection.title,
+        title: editedTitle,
         url: currentSelection.url,
-        content: currentSelection.content,
+        content: editedContent,
         tags: selectedTags,
         timestamp: new Date().toISOString(),
         imageFiles: []
@@ -523,25 +551,52 @@
     const tags = [];
     const techKeywords = ['javascript', 'python', 'react', 'vue', 'angular', 'node', 'css',
       'typescript', 'docker', 'kubernetes', 'aws', 'frontend', 'backend', 'devops',
-      'tutorial', 'guide', 'tips', 'api', 'security', 'database'];
+      'tutorial', 'guide', 'tips', 'api', 'security', 'database', 'html', 'git',
+      'linux', 'windows', 'mac', 'mobile', 'web', 'cloud', 'server', 'client',
+      'ai', 'ml', 'machine', 'learning', 'data', 'algorithm', 'design', 'test'];
 
-    // Domain-based
+    // Domain-based (match main domain for subdomains)
     const domainRules = {
-      'github.com': ['dev', 'code'],
-      'medium.com': ['reading', 'article'],
-      'stackoverflow.com': ['dev', 'qa'],
-      'youtube.com': ['video'],
-      'dev.to': ['dev', 'blog']
+      'github.com': ['dev', 'code', 'github'],
+      'github.io': ['dev', 'github'],
+      'medium.com': ['reading', 'article', 'blog'],
+      'stackoverflow.com': ['dev', 'qa', 'stackoverflow'],
+      'stackexchange.com': ['qa', 'stackoverflow'],
+      'youtube.com': ['video', 'youtube'],
+      'youtu.be': ['video', 'youtube'],
+      'dev.to': ['dev', 'blog'],
+      'reddit.com': ['discussion', 'reddit'],
+      'twitter.com': ['social', 'twitter'],
+      'x.com': ['social', 'twitter'],
+      'linkedin.com': ['career', 'linkedin'],
+      'npmjs.com': ['npm', 'package'],
+      'pypi.org': ['python', 'package'],
+      'docs.python.org': ['python', 'docs'],
+      'developer.mozilla.org': ['docs', 'mdn', 'web'],
+      'w3schools.com': ['tutorial', 'web'],
+      'csdn.net': ['dev', 'blog', 'cn'],
+      'juejin.cn': ['dev', 'blog', 'cn'],
+      'zhihu.com': ['discussion', 'cn'],
+      'segmentfault.com': ['dev', 'qa', 'cn']
     };
-    if (domainRules[domain]) tags.push(...domainRules[domain]);
 
-    // Title keywords
-    const words = title.toLowerCase().split(/\s+/);
-    for (const word of words) {
-      if (techKeywords.includes(word) && word.length >= 3) tags.push(word);
+    // Match domain (including partial match for subdomains)
+    for (const [ruleDomain, ruleTags] of Object.entries(domainRules)) {
+      if (domain === ruleDomain || domain.endsWith('.' + ruleDomain)) {
+        tags.push(...ruleTags);
+        break; // Only apply first matching rule
+      }
     }
 
-    return [...new Set(tags)].slice(0, 6);
+    // Title keywords (partial match for compound words)
+    const titleLower = title.toLowerCase();
+    for (const keyword of techKeywords) {
+      if (titleLower.includes(keyword) && keyword.length >= 2) {
+        tags.push(keyword);
+      }
+    }
+
+    return [...new Set(tags)].slice(0, 8);
   }
 
   /**

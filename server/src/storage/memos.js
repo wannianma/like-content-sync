@@ -145,25 +145,23 @@ function getImageType(filename) {
 }
 
 /**
- * 同步内容到 Memos（图片使用本地 URL）
+ * 同步内容到 Memos（图片使用七牛 URL）
  * @param {Object} data - 内容数据
- * @param {Object} config - Memos 配置 { url, token, serverUrl }
- * @param {string} imagesDir - 本地图片目录路径
+ * @param {Object} config - Memos 配置 { url, token }
+ * @param {Array} downloadedImages - 图片信息数组 [{ localUrl, qiniuUrl, filename }]
  */
-async function syncToMemos(data, config, imagesDir = null) {
+async function syncToMemos(data, config, downloadedImages = []) {
   if (!config.url || !config.token) {
     console.log('[Memos] Not configured, skipping sync');
     return { success: false, reason: 'not_configured' };
   }
 
   const { title, url, content, tags, timestamp } = data;
-  const serverUrl = config.serverUrl || process.env.SERVER_URL || '';
 
   try {
     console.log(`[Memos] Starting sync, base URL: ${config.url}`);
-    console.log(`[Memos] Server URL for images: ${serverUrl || 'not configured'}`);
 
-    // 处理图片：将本地路径转换为公网 URL
+    // 处理图片：将本地路径替换为七牛 URL（如果有）
     let processedContent = content;
     const imageRegex = /!\[([^\]]*)\]\((images\/[^)]+)\)/g;
     let match;
@@ -172,15 +170,25 @@ async function syncToMemos(data, config, imagesDir = null) {
     while ((match = imageRegex.exec(content)) !== null) {
       const [fullMatch, altText, localPath] = match;
 
-      // 将本地路径转换为公网 URL
-      if (serverUrl) {
-        const imageUrl = `${serverUrl}/${localPath}`;
+      // 查找对应的图片信息
+      const imageInfo = downloadedImages.find(img => img.localUrl === localPath);
+
+      // 优先使用七牛 URL，严格按原样使用，不做任何修改
+      let imageUrl = null;
+      if (imageInfo && imageInfo.qiniuUrl) {
+        imageUrl = imageInfo.qiniuUrl;
+        console.log(`[Memos] Using Qiniu URL (strict from .env): ${imageUrl}`);
+      } else if (config.serverUrl) {
+        imageUrl = `${config.serverUrl}/${localPath}`;
+        console.log(`[Memos] Image URL (Server): ${localPath} -> ${imageUrl}`);
+      } else {
+        console.warn(`[Memos] No URL available for image ${localPath}`);
+      }
+
+      if (imageUrl) {
         const newImageTag = `![${altText}](${imageUrl})`;
         processedContent = processedContent.replace(fullMatch, newImageTag);
         imageUrls.push({ localPath, imageUrl });
-        console.log(`[Memos] Image URL: ${localPath} -> ${imageUrl}`);
-      } else {
-        console.warn(`[Memos] No SERVER_URL configured, image ${localPath} will not be accessible in Memos`);
       }
     }
 
@@ -208,12 +216,15 @@ async function syncToMemos(data, config, imagesDir = null) {
 
     // 创建 Memo
     const result = await createMemo(config.url, config.token, memoContent);
-    console.log(`[Memos] Synced successfully: memo ID ${result.id}`);
+
+    // 从 result.name 提取 memo ID（格式如 "memos/62"）
+    const memoId = result.name ? result.name.split('/')[1] : result.id;
+    console.log(`[Memos] Synced successfully: memo ID ${memoId}`);
 
     return {
       success: true,
-      memoId: result.id,
-      memoUrl: `${normalizeBaseUrl(config.url)}/m/${result.id}`,
+      memoId: memoId,
+      memoUrl: `${normalizeBaseUrl(config.url)}/m/${memoId}`,
       imageCount: imageUrls.length,
       imageUrls
     };
@@ -260,6 +271,7 @@ async function createMemo(baseUrl, token, content) {
     try {
       const result = await makeRequest(protocol, parsedUrl, apiPath, token, body);
       console.log(`[Memos] Success with path: ${apiPath}`);
+      console.log(`[Memos] API response:`, JSON.stringify(result).substring(0, 200));
       return result;
     } catch (err) {
       console.warn(`[Memos] Failed with path ${apiPath}: ${err.message}`);

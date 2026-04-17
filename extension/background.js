@@ -89,11 +89,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       }
 
       if (response && !response.error) {
-        // Store selection data and show notification to click extension icon
-        chrome.storage.local.set({ currentSelection: response }, () => {
-          // Cannot open popup programmatically in MV3, show notification instead
-          showNotification('Content Ready', 'Click the extension icon to add tags and save');
-        });
+        // Store selection data (modal is shown directly by content script)
+        chrome.storage.local.set({ currentSelection: response });
       } else {
         showNotification('Error', response?.error || 'No content selected');
       }

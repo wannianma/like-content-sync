@@ -29,47 +29,55 @@ header h2 {
   color: #333;
 }
 
-.preview-section {
+/* Edit section styles */
+.edit-section {
   margin-bottom: 12px;
 }
 
-.preview-section h3 {
-  margin: 0 0 6px 0;
+.edit-section label {
+  display: block;
   font-size: 12px;
   color: #666;
+  margin-bottom: 4px;
 }
 
-.preview-box {
-  background: #f5f5f5;
+.edit-title-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #ddd;
   border-radius: 4px;
+  font-size: 14px;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+
+.edit-title-input:focus {
+  outline: none;
+  border-color: #0066cc;
+}
+
+.edit-content-textarea {
+  width: 100%;
+  min-height: 100px;
+  max-height: 200px;
   padding: 8px;
-  max-height: 120px;
-  overflow-y: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
   font-size: 13px;
   line-height: 1.4;
-}
-
-.preview-text {
-  margin: 0;
+  resize: vertical;
   white-space: pre-wrap;
   word-break: break-word;
+  box-sizing: border-box;
 }
 
-#preview-images {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-#preview-images img {
-  max-width: 80px;
-  max-height: 60px;
-  object-fit: cover;
-  border-radius: 4px;
+.edit-content-textarea:focus {
+  outline: none;
+  border-color: #0066cc;
 }
 
 .source-info {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   font-size: 11px;
   color: #888;
 }
