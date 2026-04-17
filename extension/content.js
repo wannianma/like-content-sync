@@ -628,9 +628,12 @@
         return true;
       }
 
+      // Generate Text Fragment URL for precise content location
+      const textFragmentUrl = generateTextFragmentUrl(selection);
+
       const data = {
         title: document.title,
-        url: window.location.href,
+        url: textFragmentUrl,
         content: text,
         images: images,
         domain: window.location.hostname
@@ -649,5 +652,44 @@
       return true;
     }
   });
+
+  /**
+   * Generate Text Fragment URL for precise content location
+   * Uses browser's native #:~:text= feature
+   */
+  function generateTextFragmentUrl(selection) {
+    const baseUrl = window.location.href.split('#')[0]; // Remove existing fragment
+    const selectedText = selection.toString().trim();
+
+    if (!selectedText) {
+      return baseUrl;
+    }
+
+    // Extract key text fragment (first meaningful words)
+    // Use first 50 characters or first sentence, whichever is shorter
+    let textFragment = selectedText.substring(0, 50);
+
+    // Find a natural break point (space, punctuation)
+    const breakPoints = ['。', '，', '.', ',', ' ', '；', ';', '\n'];
+    for (const point of breakPoints) {
+      const idx = textFragment.lastIndexOf(point);
+      if (idx > 10 && idx < textFragment.length - 1) {
+        textFragment = textFragment.substring(0, idx);
+        break;
+      }
+    }
+
+    // Clean and encode the text fragment
+    textFragment = textFragment.trim();
+    if (textFragment.length < 5) {
+      textFragment = selectedText.substring(0, 30).trim();
+    }
+
+    // URL encode the text fragment
+    const encodedFragment = encodeURIComponent(textFragment);
+
+    // Build Text Fragment URL
+    return `${baseUrl}#:~:text=${encodedFragment}`;
+  }
 
 })();
