@@ -102,7 +102,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
  * Save content to server
  */
 async function saveToServer(data, retryCount = 0) {
-  const settings = await chrome.storage.sync.get(['apiEndpoint', 'apiKey']);
+  const settings = await chrome.storage.sync.get(['apiEndpoint', 'apiKey', 'memosConfig', 'webdavConfig']);
 
   if (!settings.apiEndpoint || !settings.apiKey) {
     return { error: 'API not configured. Please set up in options.' };
@@ -115,6 +115,14 @@ async function saveToServer(data, retryCount = 0) {
   formData.append('timestamp', data.timestamp);
   if (data.tags && data.tags.length > 0) {
     formData.append('tags', data.tags.join(','));
+  }
+
+  // Add sync configs (as JSON strings)
+  if (settings.memosConfig) {
+    formData.append('memosConfig', JSON.stringify(settings.memosConfig));
+  }
+  if (settings.webdavConfig) {
+    formData.append('webdavConfig', JSON.stringify(settings.webdavConfig));
   }
 
   // Add images
@@ -277,7 +285,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'getSettings') {
     keepChannelOpen = true;
-    chrome.storage.sync.get(['apiEndpoint', 'apiKey', 'domainRules'], (result) => {
+    chrome.storage.sync.get(['apiEndpoint', 'apiKey', 'domainRules', 'memosConfig', 'webdavConfig'], (result) => {
       sendResponse(result);
     });
   }

@@ -22,6 +22,26 @@
   const newTagsInput = document.getElementById('new-tags');
   const addRuleBtn = document.getElementById('add-rule');
 
+  // Memos elements
+  const memosEnabledCheckbox = document.getElementById('memos-enabled');
+  const memosUrlInput = document.getElementById('memos-url');
+  const memosTokenInput = document.getElementById('memos-token');
+  const toggleMemosTokenBtn = document.getElementById('toggle-memos-token');
+  const testMemosBtn = document.getElementById('test-memos');
+  const memosConfigFields = document.getElementById('memos-config-fields');
+  const memosTestStatus = document.getElementById('memos-test-status');
+
+  // WebDAV elements
+  const webdavEnabledCheckbox = document.getElementById('webdav-enabled');
+  const webdavUrlInput = document.getElementById('webdav-url');
+  const webdavUsernameInput = document.getElementById('webdav-username');
+  const webdavPasswordInput = document.getElementById('webdav-password');
+  const toggleWebdavPasswordBtn = document.getElementById('toggle-webdav-password');
+  const webdavBasePathInput = document.getElementById('webdav-base-path');
+  const testWebdavBtn = document.getElementById('test-webdav');
+  const webdavConfigFields = document.getElementById('webdav-config-fields');
+  const webdavTestStatus = document.getElementById('webdav-test-status');
+
   let currentDomainRules = {};
 
   /**
@@ -29,6 +49,7 @@
    */
   async function init() {
     loadSettings();
+    loadSyncConfigs();
     loadPendingQueue();
     loadHistory();
     loadDomainRules();
@@ -41,6 +62,16 @@
     clearPendingBtn.addEventListener('click', clearPending);
     clearHistoryBtn.addEventListener('click', clearHistory);
     addRuleBtn.addEventListener('click', addDomainRule);
+
+    // Memos event listeners
+    memosEnabledCheckbox.addEventListener('change', toggleMemosFields);
+    toggleMemosTokenBtn.addEventListener('click', toggleMemosTokenVisibility);
+    testMemosBtn.addEventListener('click', testMemosConnection);
+
+    // WebDAV event listeners
+    webdavEnabledCheckbox.addEventListener('change', toggleWebdavFields);
+    toggleWebdavPasswordBtn.addEventListener('click', toggleWebdavPasswordVisibility);
+    testWebdavBtn.addEventListener('click', testWebdavConnection);
   }
 
   /**
@@ -53,6 +84,138 @@
         apiKeyInput.value = response.apiKey || '';
       }
     });
+  }
+
+  /**
+   * Load sync configurations from storage
+   */
+  function loadSyncConfigs() {
+    chrome.runtime.sendMessage({ action: 'getSettings' }, (settings) => {
+      // Memos config
+      if (settings.memosConfig) {
+        memosEnabledCheckbox.checked = settings.memosConfig.enabled || false;
+        memosUrlInput.value = settings.memosConfig.url || '';
+        memosTokenInput.value = settings.memosConfig.token || '';
+        toggleMemosFields();
+      }
+
+      // WebDAV config
+      if (settings.webdavConfig) {
+        webdavEnabledCheckbox.checked = settings.webdavConfig.enabled || false;
+        webdavUrlInput.value = settings.webdavConfig.url || '';
+        webdavUsernameInput.value = settings.webdavConfig.username || '';
+        webdavPasswordInput.value = settings.webdavConfig.password || '';
+        webdavBasePathInput.value = settings.webdavConfig.basePath || '/notes';
+        toggleWebdavFields();
+      }
+    });
+  }
+
+  /**
+   * Toggle Memos config fields visibility
+   */
+  function toggleMemosFields() {
+    memosConfigFields.style.display = memosEnabledCheckbox.checked ? 'block' : 'none';
+  }
+
+  /**
+   * Toggle WebDAV config fields visibility
+   */
+  function toggleWebdavFields() {
+    webdavConfigFields.style.display = webdavEnabledCheckbox.checked ? 'block' : 'none';
+  }
+
+  /**
+   * Toggle Memos token visibility
+   */
+  function toggleMemosTokenVisibility() {
+    const type = memosTokenInput.type;
+    memosTokenInput.type = type === 'password' ? 'text' : 'password';
+    toggleMemosTokenBtn.textContent = type === 'password' ? '🙈' : '👁';
+  }
+
+  /**
+   * Toggle WebDAV password visibility
+   */
+  function toggleWebdavPasswordVisibility() {
+    const type = webdavPasswordInput.type;
+    webdavPasswordInput.type = type === 'password' ? 'text' : 'password';
+    toggleWebdavPasswordBtn.textContent = type === 'password' ? '🙈' : '👁';
+  }
+
+  /**
+   * Test Memos connection
+   */
+  async function testMemosConnection() {
+    const url = memosUrlInput.value.trim();
+    const token = memosTokenInput.value.trim();
+
+    if (!url || !token) {
+      showSyncStatus('memos', 'Please enter URL and Token', 'error');
+      return;
+    }
+
+    showSyncStatus('memos', 'Testing connection...', 'loading');
+
+    try {
+      const response = await fetch(`${apiEndpointInput.value}/api/test/memos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, token })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        showSyncStatus('memos', 'Connection successful!', 'success');
+      } else {
+        showSyncStatus('memos', `Connection failed: ${result.reason}`, 'error');
+      }
+    } catch (err) {
+      showSyncStatus('memos', 'Connection failed: Network error', 'error');
+    }
+  }
+
+  /**
+   * Test WebDAV connection
+   */
+  async function testWebdavConnection() {
+    const url = webdavUrlInput.value.trim();
+    const username = webdavUsernameInput.value.trim();
+    const password = webdavPasswordInput.value.trim();
+    const basePath = webdavBasePathInput.value.trim() || '/notes';
+
+    if (!url || !username || !password) {
+      showSyncStatus('webdav', 'Please enter URL, Username and Password', 'error');
+      return;
+    }
+
+    showSyncStatus('webdav', 'Testing connection...', 'loading');
+
+    try {
+      const response = await fetch(`${apiEndpointInput.value}/api/test/webdav`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, username, password, basePath })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        showSyncStatus('webdav', 'Connection successful!', 'success');
+      } else {
+        showSyncStatus('webdav', `Connection failed: ${result.reason}`, 'error');
+      }
+    } catch (err) {
+      showSyncStatus('webdav', 'Connection failed: Network error', 'error');
+    }
+  }
+
+  /**
+   * Show sync test status
+   */
+  function showSyncStatus(type, message, statusType) {
+    const statusEl = type === 'memos' ? memosTestStatus : webdavTestStatus;
+    statusEl.textContent = message;
+    statusEl.className = `status-message ${statusType}`;
   }
 
   /**
@@ -144,7 +307,19 @@
     const settings = {
       apiEndpoint: apiEndpointInput.value.trim(),
       apiKey: apiKeyInput.value.trim(),
-      domainRules: currentDomainRules
+      domainRules: currentDomainRules,
+      memosConfig: {
+        enabled: memosEnabledCheckbox.checked,
+        url: memosUrlInput.value.trim(),
+        token: memosTokenInput.value.trim()
+      },
+      webdavConfig: {
+        enabled: webdavEnabledCheckbox.checked,
+        url: webdavUrlInput.value.trim(),
+        username: webdavUsernameInput.value.trim(),
+        password: webdavPasswordInput.value.trim(),
+        basePath: webdavBasePathInput.value.trim() || '/notes'
+      }
     };
 
     chrome.runtime.sendMessage({ action: 'saveSettings', settings }, (response) => {

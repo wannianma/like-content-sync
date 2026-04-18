@@ -147,11 +147,12 @@ function getImageType(filename) {
 /**
  * 同步内容到 Memos（图片使用七牛 URL）
  * @param {Object} data - 内容数据
- * @param {Object} config - Memos 配置 { url, token }
+ * @param {Object} config - Memos 配置 { url, token }（用户级配置）
  * @param {Array} downloadedImages - 图片信息数组 [{ localUrl, qiniuUrl, filename }]
+ * @param {string} serverUrl - 服务器 URL（用于图片访问，从环境变量获取）
  */
-async function syncToMemos(data, config, downloadedImages = []) {
-  if (!config.url || !config.token) {
+async function syncToMemos(data, config, downloadedImages = [], serverUrl = '') {
+  if (!config || !config.url || !config.token) {
     console.log('[Memos] Not configured, skipping sync');
     return { success: false, reason: 'not_configured' };
   }
@@ -178,8 +179,8 @@ async function syncToMemos(data, config, downloadedImages = []) {
       if (imageInfo && imageInfo.qiniuUrl) {
         imageUrl = imageInfo.qiniuUrl;
         console.log(`[Memos] Using Qiniu URL (strict from .env): ${imageUrl}`);
-      } else if (config.serverUrl) {
-        imageUrl = `${config.serverUrl}/${localPath}`;
+      } else if (serverUrl) {
+        imageUrl = `${serverUrl}/${localPath}`;
         console.log(`[Memos] Image URL (Server): ${localPath} -> ${imageUrl}`);
       } else {
         console.warn(`[Memos] No URL available for image ${localPath}`);
@@ -336,17 +337,6 @@ async function makeRequest(protocol, parsedUrl, apiPath, token, body) {
 }
 
 /**
- * 从环境变量获取 Memos 配置
- */
-function getMemosConfig() {
-  return {
-    url: process.env.MEMOS_URL || '',
-    token: process.env.MEMOS_TOKEN || '',
-    serverUrl: process.env.SERVER_URL || ''
-  };
-}
-
-/**
  * 测试 Memos 连接
  */
 async function testMemosConnection(url, token) {
@@ -420,7 +410,6 @@ module.exports = {
   syncToMemos,
   createMemo,
   uploadImageToMemos,
-  getMemosConfig,
   normalizeBaseUrl,
   testMemosConnection
 };

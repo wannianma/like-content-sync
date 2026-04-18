@@ -34,6 +34,70 @@
       <div id="connection-status" class="status-message"></div>
     </section>
 
+    <section class="sync-section">
+      <h2>Sync Configuration</h2>
+      <p class="help-text">Configure external sync targets for your saved content</p>
+
+      <!-- Memos Sync -->
+      <div class="sync-config-block">
+        <div class="sync-header">
+          <label class="sync-toggle">
+            <input type="checkbox" id="memos-enabled">
+            <span class="toggle-label">Memos Sync</span>
+          </label>
+          <button id="test-memos" class="btn btn-small btn-secondary">Test Connection</button>
+        </div>
+        <div id="memos-config-fields" class="sync-fields">
+          <div class="form-group">
+            <label for="memos-url">Memos URL</label>
+            <input type="url" id="memos-url" placeholder="https://memos.example.com">
+          </div>
+          <div class="form-group">
+            <label for="memos-token">Access Token</label>
+            <div class="input-with-toggle">
+              <input type="password" id="memos-token" placeholder="Enter your Memos access token">
+              <button id="toggle-memos-token" class="btn-icon" title="Show/Hide">👁</button>
+            </div>
+          </div>
+        </div>
+        <div id="memos-test-status" class="status-message"></div>
+      </div>
+
+      <!-- WebDAV Sync -->
+      <div class="sync-config-block">
+        <div class="sync-header">
+          <label class="sync-toggle">
+            <input type="checkbox" id="webdav-enabled">
+            <span class="toggle-label">WebDAV Sync</span>
+          </label>
+          <button id="test-webdav" class="btn btn-small btn-secondary">Test Connection</button>
+        </div>
+        <div id="webdav-config-fields" class="sync-fields">
+          <div class="form-group">
+            <label for="webdav-url">WebDAV URL</label>
+            <input type="url" id="webdav-url" placeholder="https://dav.example.com">
+          </div>
+          <div class="form-group">
+            <label for="webdav-username">Username</label>
+            <input type="text" id="webdav-username" placeholder="Enter username">
+          </div>
+          <div class="form-group">
+            <label for="webdav-password">Password</label>
+            <div class="input-with-toggle">
+              <input type="password" id="webdav-password" placeholder="Enter password">
+              <button id="toggle-webdav-password" class="btn-icon" title="Show/Hide">👁</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="webdav-base-path">Base Path</label>
+            <input type="text" id="webdav-base-path" placeholder="/notes" value="/notes">
+            <span class="help-text">Remote directory path for storing files</span>
+          </div>
+        </div>
+        <div id="webdav-test-status" class="status-message"></div>
+      </div>
+    </section>
+
     <section class="pending-section">
       <h2>Pending Queue</h2>
       <p class="help-text">Content waiting to be synced (when offline or errors occurred)</p>

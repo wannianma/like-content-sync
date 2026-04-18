@@ -1,7 +1,6 @@
 const express = require('express');
 const multer = require('multer');
 const storage = require('../storage');
-const memosSync = require('../storage/memos');
 
 const router = express.Router();
 
@@ -28,7 +27,7 @@ const upload = multer({
  */
 router.post('/', upload.array('images', 10), async (req, res) => {
   try {
-    const { title, url, content, tags, timestamp } = req.body;
+    const { title, url, content, tags, timestamp, memosConfig, webdavConfig } = req.body;
 
     // Validate required fields
     if (!title || typeof title !== 'string') {
@@ -68,6 +67,26 @@ router.post('/', upload.array('images', 10), async (req, res) => {
       }
     }
 
+    // Parse sync configs (JSON strings from FormData)
+    let parsedMemosConfig = null;
+    let parsedWebdavConfig = null;
+
+    if (memosConfig && typeof memosConfig === 'string') {
+      try {
+        parsedMemosConfig = JSON.parse(memosConfig);
+      } catch (e) {
+        console.warn('[API] Failed to parse memosConfig:', e.message);
+      }
+    }
+
+    if (webdavConfig && typeof webdavConfig === 'string') {
+      try {
+        parsedWebdavConfig = JSON.parse(webdavConfig);
+      } catch (e) {
+        console.warn('[API] Failed to parse webdavConfig:', e.message);
+      }
+    }
+
     const apiKeyHash = req.apiKeyHash;
     const uploadedImages = [];
 
@@ -96,10 +115,16 @@ router.post('/', upload.array('images', 10), async (req, res) => {
       finalContent,
       parsedTags,
       timestamp,
-      uploadedImages // Pass uploaded images info for Memos sync
+      uploadedImages, // Pass uploaded images info for sync
+      parsedMemosConfig, // User-level Memos config
+      parsedWebdavConfig // User-level WebDAV config
     );
 
     const qiniuImageCount = [...uploadedImages, ...result.downloadedImages].filter(img => img.qiniuUrl).length;
+
+    // Check which syncs are enabled
+    const memosEnabled = parsedMemosConfig && parsedMemosConfig.enabled && parsedMemosConfig.url && parsedMemosConfig.token;
+    const webdavEnabled = parsedWebdavConfig && parsedWebdavConfig.enabled && parsedWebdavConfig.url;
 
     res.json({
       success: true,
@@ -107,7 +132,8 @@ router.post('/', upload.array('images', 10), async (req, res) => {
       qiniuImages: qiniuImageCount,
       downloadedImages: result.downloadedImages.length,
       downloadedDetails: result.downloadedImages,
-      memosEnabled: Boolean(memosSync.getMemosConfig().url && memosSync.getMemosConfig().token)
+      memosEnabled,
+      webdavEnabled
     });
   } catch (err) {
     console.error('Error saving content:', err);

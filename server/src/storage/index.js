@@ -5,6 +5,7 @@ const https = require('https');
 const http = require('http');
 const memosSync = require('./memos');
 const qiniuUpload = require('./qiniu');
+const webdavSync = require('./webdav');
 
 // Use local data directory for development, /data/notes for Docker deployment
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
@@ -329,8 +330,10 @@ async function saveImage(apiKeyHash, imageBuffer, filename) {
  * @param {Array} tags - Tags array
  * @param {string} timestamp - ISO timestamp
  * @param {Array} uploadedImages - Uploaded images info [{ localUrl, qiniuUrl, filename }]
+ * @param {Object} memosConfig - Memos 配置（用户级）{ url, token, enabled }
+ * @param {Object} webdavConfig - WebDAV 配置（用户级）{ url, username, password, basePath, enabled }
  */
-async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestamp, uploadedImages = []) {
+async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestamp, uploadedImages = [], memosConfig = null, webdavConfig = null) {
   const dailyFile = getDailyFilePath(apiKeyHash, new Date(timestamp));
 
   await initUserDirs(apiKeyHash);
@@ -354,26 +357,90 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
 
   await fs.appendFile(dailyFile, header + entry);
 
-  // 异步同步到 Memos（不阻塞主流程）
-  const memosConfig = memosSync.getMemosConfig();
-  if (memosConfig.url && memosConfig.token) {
-    // 异步执行，不等待结果，传递图片信息（含七牛URL）
-    memosSync.syncToMemos(
-      { title, url, content: processedContent, tags, timestamp },
-      memosConfig,
-      allImages // 包含上传图片和下载图片的完整信息
-    )
-      .then(result => {
-        if (result.success) {
-          const qiniuCount = allImages.filter(img => img.qiniuUrl).length;
-          console.log(`[Memos] Sync completed: ${result.memoUrl}, total images: ${allImages.length}, Qiniu: ${qiniuCount}`);
-        } else {
-          console.warn(`[Memos] Sync failed: ${result.reason}`);
+  // 读取完整的当天文件内容（用于 WebDAV 同步）
+  let fullFileContent = '';
+  try {
+    fullFileContent = await fs.readFile(dailyFile, 'utf8');
+  } catch (readErr) {
+    console.warn('[Storage] Could not read daily file for WebDAV sync:', readErr.message);
+    fullFileContent = header + entry; // fallback to current entry
+  }
+
+  // 获取服务器 URL（用于 Memos 图片访问）
+  const serverUrl = process.env.SERVER_URL || '';
+
+  // 异步同步到外部服务（不阻塞主流程）
+  const syncTasks = [];
+
+  // Memos 同步（用户级配置）
+  if (memosConfig && memosConfig.enabled && memosConfig.url && memosConfig.token) {
+    syncTasks.push(
+      memosSync.syncToMemos(
+        { title, url, content: processedContent, tags, timestamp },
+        memosConfig,
+        allImages,
+        serverUrl
+      )
+        .then(result => {
+          if (result.success) {
+            const qiniuCount = allImages.filter(img => img.qiniuUrl).length;
+            console.log(`[Memos] Sync completed: ${result.memoUrl}, total images: ${allImages.length}, Qiniu: ${qiniuCount}`);
+          } else {
+            console.warn(`[Memos] Sync failed: ${result.reason}`);
+          }
+        })
+        .catch(err => {
+          console.error('[Memos] Sync error:', err.message);
+        })
+    );
+  }
+
+  // WebDAV 同步（用户级配置）
+  if (webdavConfig && webdavSync.isWebDAVEnabled(webdavConfig)) {
+    // 为 WebDAV 准备图片 buffer
+    const imagesWithBuffer = [];
+    for (const img of allImages) {
+      if (img.filename && img.localUrl) {
+        try {
+          // 尝试读取本地图片文件
+          const localImagePath = path.join(DATA_DIR, `user-${apiKeyHash}`, 'images', img.filename);
+          const buffer = await fs.readFile(localImagePath);
+          imagesWithBuffer.push({
+            ...img,
+            buffer
+          });
+        } catch (readErr) {
+          console.warn(`[WebDAV] Could not read local image: ${img.filename}`);
         }
-      })
-      .catch(err => {
-        console.error('[Memos] Sync error:', err.message);
-      });
+      }
+    }
+
+    syncTasks.push(
+      webdavSync.syncToWebDAV(
+        { title, url, content: processedContent, tags, timestamp },
+        imagesWithBuffer,
+        webdavConfig,
+        apiKeyHash,
+        fullFileContent  // 发送完整的当天 md 文件内容
+      )
+        .then(result => {
+          if (result.success) {
+            console.log(`[WebDAV] Sync completed: ${result.filePath}, images: ${result.imageCount}`);
+          } else {
+            console.warn(`[WebDAV] Sync failed: ${result.reason}`);
+          }
+        })
+        .catch(err => {
+          console.error('[WebDAV] Sync error:', err.message);
+        })
+    );
+  }
+
+  // 执行所有同步任务（并行，不阻塞）
+  if (syncTasks.length > 0) {
+    Promise.all(syncTasks).catch(err => {
+      console.error('[Sync] Sync tasks error:', err.message);
+    });
   }
 
   return { downloadedImages };

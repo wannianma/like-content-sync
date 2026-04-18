@@ -23,6 +23,7 @@ app.use(express.json());
 // Import routes and middleware
 const { validateApiKeyIfConfigured } = require('./middleware/auth');
 const contentRoutes = require('./routes/content');
+const testRoutes = require('./routes/test');
 const { ensureDir } = require('./storage');
 
 // Initialize data directory
@@ -72,6 +73,9 @@ app.get('/api/health', (req, res) => {
 
 // Content API (requires auth if configured)
 app.use('/api/content', validateApiKeyIfConfigured, contentRoutes);
+
+// Test API (no auth required - user tests their own credentials)
+app.use('/api/test', testRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
