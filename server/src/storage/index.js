@@ -361,13 +361,8 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
 
   await initUserDirs(apiKeyHash);
 
-  // Process images in content (download and replace URLs), pass page URL for relative paths
-  const { content: processedContent, downloadedImages } = await processContentImages(apiKeyHash, content, url);
-
-  // Merge uploaded images with downloaded images for Memos sync
-  const allImages = [...uploadedImages, ...downloadedImages];
-
-  const entry = formatMarkdownEntry(title, url, processedContent, tags, timestamp);
+  // 先保存原始内容到文件（不等待图片下载）
+  const entry = formatMarkdownEntry(title, url, content, tags, timestamp);
 
   // Check if file exists and add header if new
   let header = '';
@@ -380,93 +375,107 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
 
   await fs.appendFile(dailyFile, header + entry);
 
-  // 读取完整的当天文件内容（用于 WebDAV 同步）
-  let fullFileContent = '';
-  try {
-    fullFileContent = await fs.readFile(dailyFile, 'utf8');
-  } catch (readErr) {
-    console.warn('[Storage] Could not read daily file for WebDAV sync:', readErr.message);
-    fullFileContent = header + entry; // fallback to current entry
-  }
+  // 异步下载图片并更新文件（不阻塞主流程）
+  const asyncImageTask = async () => {
+    try {
+      console.log('[Storage] Starting async image download...');
+      const { content: processedContent, downloadedImages } = await processContentImages(apiKeyHash, content, url);
 
-  // 获取服务器 URL（用于 Memos 图片访问）
-  const serverUrl = process.env.SERVER_URL || '';
+      // 如果有下载的图片，更新文件中的图片链接
+      if (downloadedImages.length > 0) {
+        const updatedEntry = formatMarkdownEntry(title, url, processedContent, tags, timestamp);
 
-  // 异步同步到外部服务（不阻塞主流程）
-  const syncTasks = [];
+        // 读取文件内容并替换
+        let fileContent = await fs.readFile(dailyFile, 'utf8');
+        // 替换原始 entry 为更新后的 entry
+        fileContent = fileContent.replace(entry, updatedEntry);
+        await fs.writeFile(dailyFile, fileContent);
+        console.log(`[Storage] Updated ${downloadedImages.length} image links in file`);
+      }
 
-  // Memos 同步（用户级配置）
-  if (memosConfig && memosConfig.enabled && memosConfig.url && memosConfig.token) {
-    syncTasks.push(
-      memosSync.syncToMemos(
-        { title, url, content: processedContent, tags, timestamp },
-        memosConfig,
-        allImages,
-        serverUrl
-      )
-        .then(result => {
+      // Merge uploaded images with downloaded images for sync
+      const allImages = [...uploadedImages, ...downloadedImages];
+
+      // 读取完整的当天文件内容（用于 WebDAV 同步）
+      let fullFileContent = '';
+      try {
+        fullFileContent = await fs.readFile(dailyFile, 'utf8');
+      } catch (readErr) {
+        console.warn('[Storage] Could not read daily file for WebDAV sync:', readErr.message);
+        fullFileContent = header + updatedEntry;
+      }
+
+      // 获取服务器 URL（用于 Memos 图片访问）
+      const serverUrl = process.env.SERVER_URL || '';
+
+      // Memos 同步（用户级配置）
+      if (memosConfig && memosConfig.enabled && memosConfig.url && memosConfig.token) {
+        try {
+          const result = await memosSync.syncToMemos(
+            { title, url, content: processedContent, tags, timestamp },
+            memosConfig,
+            allImages,
+            serverUrl
+          );
           if (result.success) {
             const qiniuCount = allImages.filter(img => img.qiniuUrl).length;
             console.log(`[Memos] Sync completed: ${result.memoUrl}, total images: ${allImages.length}, Qiniu: ${qiniuCount}`);
           } else {
             console.warn(`[Memos] Sync failed: ${result.reason}`);
           }
-        })
-        .catch(err => {
+        } catch (err) {
           console.error('[Memos] Sync error:', err.message);
-        })
-    );
-  }
-
-  // WebDAV 同步（用户级配置）
-  if (webdavConfig && webdavSync.isWebDAVEnabled(webdavConfig)) {
-    // 为 WebDAV 准备图片 buffer
-    const imagesWithBuffer = [];
-    for (const img of allImages) {
-      if (img.filename && img.localUrl) {
-        try {
-          // 尝试读取本地图片文件
-          const localImagePath = path.join(DATA_DIR, `user-${apiKeyHash}`, 'images', img.filename);
-          const buffer = await fs.readFile(localImagePath);
-          imagesWithBuffer.push({
-            ...img,
-            buffer
-          });
-        } catch (readErr) {
-          console.warn(`[WebDAV] Could not read local image: ${img.filename}`);
         }
       }
-    }
 
-    syncTasks.push(
-      webdavSync.syncToWebDAV(
-        { title, url, content: processedContent, tags, timestamp },
-        imagesWithBuffer,
-        webdavConfig,
-        apiKeyHash,
-        fullFileContent  // 发送完整的当天 md 文件内容
-      )
-        .then(result => {
+      // WebDAV 同步（用户级配置）
+      if (webdavConfig && webdavSync.isWebDAVEnabled(webdavConfig)) {
+        // 为 WebDAV 准备图片 buffer
+        const imagesWithBuffer = [];
+        for (const img of allImages) {
+          if (img.filename && img.localUrl) {
+            try {
+              const localImagePath = path.join(DATA_DIR, `user-${apiKeyHash}`, 'images', img.filename);
+              const buffer = await fs.readFile(localImagePath);
+              imagesWithBuffer.push({ ...img, buffer });
+            } catch (readErr) {
+              console.warn(`[WebDAV] Could not read local image: ${img.filename}`);
+            }
+          }
+        }
+
+        try {
+          const result = await webdavSync.syncToWebDAV(
+            { title, url, content: processedContent, tags, timestamp },
+            imagesWithBuffer,
+            webdavConfig,
+            apiKeyHash,
+            fullFileContent
+          );
           if (result.success) {
             console.log(`[WebDAV] Sync completed: ${result.filePath}, images: ${result.imageCount}`);
           } else {
             console.warn(`[WebDAV] Sync failed: ${result.reason}`);
           }
-        })
-        .catch(err => {
+        } catch (err) {
           console.error('[WebDAV] Sync error:', err.message);
-        })
-    );
-  }
+        }
+      }
 
-  // 执行所有同步任务（并行，不阻塞）
-  if (syncTasks.length > 0) {
-    Promise.all(syncTasks).catch(err => {
-      console.error('[Sync] Sync tasks error:', err.message);
-    });
-  }
+      return { downloadedImages };
+    } catch (err) {
+      console.error('[Storage] Async image processing error:', err.message);
+      return { downloadedImages: [] };
+    }
+  };
 
-  return { downloadedImages };
+  // 启动异步任务（不等待）
+  asyncImageTask().catch(err => {
+    console.error('[Storage] Async image task failed:', err.message);
+  });
+
+  // 立即返回（不等待图片下载）
+  return { downloadedImages: [] };
 }
 
 module.exports = {
