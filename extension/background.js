@@ -332,6 +332,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
   }
 
+  if (request.action === 'testMemos') {
+    keepChannelOpen = true;
+    testMemosConnection(request.apiEndpoint, request.url, request.token)
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ success: false, reason: err.message }));
+  }
+
+  if (request.action === 'testWebdav') {
+    keepChannelOpen = true;
+    testWebdavConnection(request.apiEndpoint, request.url, request.username, request.password, request.basePath)
+      .then(result => sendResponse(result))
+      .catch(err => sendResponse({ success: false, reason: err.message }));
+  }
+
   return keepChannelOpen;
 });
 
@@ -359,6 +373,74 @@ function showNotification(title, message) {
     });
   } catch (e) {
     console.error('Failed to show notification:', e);
+  }
+}
+
+/**
+ * Test Memos connection
+ */
+async function testMemosConnection(apiEndpoint, url, token) {
+  console.log(`[Memos Test] API Endpoint: ${apiEndpoint}, Memos URL: ${url}`);
+
+  // Ensure apiEndpoint uses correct protocol
+  let endpoint = apiEndpoint.trim();
+  if (endpoint.startsWith('https://localhost') || endpoint.startsWith('https://127.0.0.1')) {
+    endpoint = endpoint.replace('https://', 'http://');
+    console.log(`[Memos Test] Corrected endpoint protocol: ${endpoint}`);
+  }
+
+  try {
+    const response = await fetch(`${endpoint}/api/test/memos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, token })
+    });
+
+    if (!response.ok) {
+      console.error(`[Memos Test] HTTP error: ${response.status}`);
+      return { success: false, reason: `HTTP ${response.status}`, testedUrl: url };
+    }
+
+    const result = await response.json();
+    console.log(`[Memos Test] Result:`, result);
+    return result;
+  } catch (err) {
+    console.error('[Memos Test] Fetch error:', err);
+    return { success: false, reason: `Failed to fetch from ${endpoint}: ${err.message}`, testedUrl: url };
+  }
+}
+
+/**
+ * Test WebDAV connection
+ */
+async function testWebdavConnection(apiEndpoint, url, username, password, basePath) {
+  console.log(`[WebDAV Test] API Endpoint: ${apiEndpoint}, WebDAV URL: ${url}`);
+
+  // Ensure apiEndpoint uses correct protocol
+  let endpoint = apiEndpoint.trim();
+  if (endpoint.startsWith('https://localhost') || endpoint.startsWith('https://127.0.0.1')) {
+    endpoint = endpoint.replace('https://', 'http://');
+    console.log(`[WebDAV Test] Corrected endpoint protocol: ${endpoint}`);
+  }
+
+  try {
+    const response = await fetch(`${endpoint}/api/test/webdav`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, username, password, basePath })
+    });
+
+    if (!response.ok) {
+      console.error(`[WebDAV Test] HTTP error: ${response.status}`);
+      return { success: false, reason: `HTTP ${response.status}`, testedUrl: url };
+    }
+
+    const result = await response.json();
+    console.log(`[WebDAV Test] Result:`, result);
+    return result;
+  } catch (err) {
+    console.error('[WebDAV Test] Fetch error:', err);
+    return { success: false, reason: `Failed to fetch from ${endpoint}: ${err.message}`, testedUrl: url };
   }
 }
 

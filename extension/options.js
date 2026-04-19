@@ -149,30 +149,36 @@
   async function testMemosConnection() {
     const url = memosUrlInput.value.trim();
     const token = memosTokenInput.value.trim();
+    const apiEndpoint = apiEndpointInput.value.trim();
 
-    if (!url || !token) {
-      showSyncStatus('memos', 'Please enter URL and Token', 'error');
+    if (!apiEndpoint) {
+      showSyncStatus('memos', 'Please configure API endpoint first', 'error');
       return;
     }
 
-    showSyncStatus('memos', 'Testing connection...', 'loading');
-
-    try {
-      const response = await fetch(`${apiEndpointInput.value}/api/test/memos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, token })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        showSyncStatus('memos', 'Connection successful!', 'success');
-      } else {
-        showSyncStatus('memos', `Connection failed: ${result.reason}`, 'error');
-      }
-    } catch (err) {
-      showSyncStatus('memos', 'Connection failed: Network error', 'error');
+    if (!url || !token) {
+      showSyncStatus('memos', 'Please enter Memos URL and Token', 'error');
+      return;
     }
+
+    showSyncStatus('memos', `Testing connection to ${url}...`, 'loading');
+
+    chrome.runtime.sendMessage({
+      action: 'testMemos',
+      apiEndpoint: apiEndpoint,
+      url: url,
+      token: token
+    }, (result) => {
+      if (chrome.runtime.lastError) {
+        showSyncStatus('memos', `Connection to ${url} failed: ${chrome.runtime.lastError.message}`, 'error');
+        return;
+      }
+      if (result.success) {
+        showSyncStatus('memos', `Connection to ${url} successful!`, 'success');
+      } else {
+        showSyncStatus('memos', `Connection to ${url} failed: ${result.reason}`, 'error');
+      }
+    });
   }
 
   /**
@@ -183,30 +189,38 @@
     const username = webdavUsernameInput.value.trim();
     const password = webdavPasswordInput.value.trim();
     const basePath = webdavBasePathInput.value.trim() || '/notes';
+    const apiEndpoint = apiEndpointInput.value.trim();
 
-    if (!url || !username || !password) {
-      showSyncStatus('webdav', 'Please enter URL, Username and Password', 'error');
+    if (!apiEndpoint) {
+      showSyncStatus('webdav', 'Please configure API endpoint first', 'error');
       return;
     }
 
-    showSyncStatus('webdav', 'Testing connection...', 'loading');
-
-    try {
-      const response = await fetch(`${apiEndpointInput.value}/api/test/webdav`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, username, password, basePath })
-      });
-
-      const result = await response.json();
-      if (result.success) {
-        showSyncStatus('webdav', 'Connection successful!', 'success');
-      } else {
-        showSyncStatus('webdav', `Connection failed: ${result.reason}`, 'error');
-      }
-    } catch (err) {
-      showSyncStatus('webdav', 'Connection failed: Network error', 'error');
+    if (!url || !username || !password) {
+      showSyncStatus('webdav', 'Please enter WebDAV URL, Username and Password', 'error');
+      return;
     }
+
+    showSyncStatus('webdav', `Testing connection to ${url}...`, 'loading');
+
+    chrome.runtime.sendMessage({
+      action: 'testWebdav',
+      apiEndpoint: apiEndpoint,
+      url: url,
+      username: username,
+      password: password,
+      basePath: basePath
+    }, (result) => {
+      if (chrome.runtime.lastError) {
+        showSyncStatus('webdav', `Connection to ${url} failed: ${chrome.runtime.lastError.message}`, 'error');
+        return;
+      }
+      if (result.success) {
+        showSyncStatus('webdav', `Connection to ${url} successful!`, 'success');
+      } else {
+        showSyncStatus('webdav', `Connection to ${url} failed: ${result.reason}`, 'error');
+      }
+    });
   }
 
   /**

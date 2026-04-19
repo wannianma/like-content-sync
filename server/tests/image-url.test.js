@@ -108,6 +108,42 @@ describe('extractImageUrlsFromContent', () => {
     expect(images.length).toBe(1);
     expect(images[0].url).toBe('https://example.com/path%20with%20spaces/image.jpg');
   });
+
+  test('提取 GIF 图片格式 ![alt](url.gif)', () => {
+    const content = '这是一段文字 ![动态图片](https://example.com/animation.gif) 更多文字';
+    const images = extractImageUrlsFromContent(content);
+
+    expect(images.length).toBe(1);
+    expect(images[0].type).toBe('external');
+    expect(images[0].url).toBe('https://example.com/animation.gif');
+    expect(images[0].alt).toBe('动态图片');
+  });
+
+  test('提取嵌套链接中的 GIF 图片 [![alt](gif-url)](link-url)', () => {
+    const content = '[![演示动画](https://example.com/demo.gif)](https://example.com/page)';
+    const images = extractImageUrlsFromContent(content);
+
+    expect(images.length).toBe(1);
+    expect(images[0].type).toBe('external');
+    expect(images[0].url).toBe('https://example.com/demo.gif');
+    expect(images[0].alt).toBe('演示动画');
+  });
+
+  test('混合提取 JPG、PNG、GIF 等多种图片格式', () => {
+    const content = `
+      ![JPG图片](https://example.com/photo.jpg)
+      ![PNG图片](https://example.com/screenshot.png)
+      ![GIF动画](https://example.com/animation.gif)
+      ![WebP图片](https://example.com/modern.webp)
+    `;
+    const images = extractImageUrlsFromContent(content);
+
+    expect(images.length).toBe(4);
+    expect(images[0].url).toBe('https://example.com/photo.jpg');
+    expect(images[1].url).toBe('https://example.com/screenshot.png');
+    expect(images[2].url).toBe('https://example.com/animation.gif');
+    expect(images[3].url).toBe('https://example.com/modern.webp');
+  });
 });
 
 /**

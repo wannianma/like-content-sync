@@ -345,19 +345,23 @@ async function testMemosConnection(url, token) {
     const parsedUrl = new URL(normalizedUrl);
     const protocol = parsedUrl.protocol === 'https:' ? https : http;
 
-    // 尝试获取用户信息来验证连接
+    // 尝试获取 memos 列表来验证连接（最小 pageSize）
     const apiPaths = [
-      '/api/v1/user/me',
-      '/api/user/me',
-      '/api/v1/status'
+      '/api/v1/memos?pageSize=1',
+      '/api/v1/memo?pageSize=1',
+      '/api/memos?pageSize=1'
     ];
 
     const existingPath = parsedUrl.pathname;
     if (existingPath && existingPath !== '/') {
-      apiPaths[0] = `${existingPath}/api/v1/user/me`;
+      apiPaths[0] = `${existingPath}/api/v1/memos?pageSize=1`;
+      apiPaths[1] = `${existingPath}/api/memos?pageSize=1`;
     }
 
+    console.log(`[Memos Test] Testing URL: ${normalizedUrl}`);
+
     for (const apiPath of apiPaths) {
+      console.log(`[Memos Test] Trying path: ${apiPath}`);
       try {
         const result = await new Promise((resolve, reject) => {
           const options = {
@@ -374,14 +378,15 @@ async function testMemosConnection(url, token) {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
+              console.log(`[Memos Test] Response: HTTP ${res.statusCode}, data: ${data.substring(0, 200)}`);
               if (res.statusCode >= 200 && res.statusCode < 300) {
                 try {
                   resolve(JSON.parse(data));
                 } catch (e) {
-                  reject(new Error('Invalid JSON'));
+                  reject(new Error(`Invalid JSON response: ${data.substring(0, 200)}`));
                 }
               } else {
-                reject(new Error(`HTTP ${res.statusCode}`));
+                reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 200)}`));
               }
             });
           });
@@ -393,16 +398,18 @@ async function testMemosConnection(url, token) {
           req.end();
         });
 
-        return { success: true, user: result };
+        // 成功获取到 JSON 响应，连接成功
+        return { success: true, testedUrl: url };
       } catch (err) {
-        if (err.message.includes('404')) continue;
+        console.log(`[Memos Test] Path ${apiPath} failed: ${err.message}`);
+        if (err.message.includes('404') || err.message.includes('Not Found')) continue;
         throw err;
       }
     }
 
-    return { success: false, reason: 'Could not find valid API endpoint' };
+    return { success: false, reason: 'Could not find valid API endpoint', testedUrl: url };
   } catch (err) {
-    return { success: false, reason: err.message };
+    return { success: false, reason: err.message, testedUrl: url };
   }
 }
 
