@@ -149,26 +149,73 @@ function extractImageUrlsFromContent(content, pageUrl = null) {
     }
   }
 
-  // 匹配图片标签：![alt](url)，使用非贪婪匹配避免跨越嵌套括号
-  const regex = /!\[(.*?)\]\(([^)]+)\)/g;
-  let match;
+  // 先匹配嵌套链接图片格式：[![alt](image-url)](link-url)
+  // 这种格式需要特殊处理，保持嵌套结构
+  const nestedRegex = /\[!\[(.*?)\]\(([^)]+)\)\]\(([^)]+)\)/g;
+  let nestedMatch;
 
-  while ((match = regex.exec(content)) !== null) {
-    const alt = match[1];
-    let url = match[2];
+  while ((nestedMatch = nestedRegex.exec(content)) !== null) {
+    const alt = nestedMatch[1];
+    let imageUrl = nestedMatch[2];
+    let linkUrl = nestedMatch[3];
+    const fullMatch = nestedMatch[0];
+
+    // 处理图片 URL 的相对路径
+    if (imageUrl && imageUrl.startsWith('/') && pageBaseUrl) {
+      imageUrl = pageBaseUrl + imageUrl;
+      console.log(`[Storage] Converted nested image relative path: ${nestedMatch[2]} -> ${imageUrl}`);
+    }
+
+    // 处理链接 URL 的相对路径
+    if (linkUrl && linkUrl.startsWith('/') && pageBaseUrl) {
+      linkUrl = pageBaseUrl + linkUrl;
+      console.log(`[Storage] Converted nested link relative path: ${nestedMatch[3]} -> ${linkUrl}`);
+    }
+
+    // External URLs (http/https) - need download
+    if (imageUrl && !imageUrl.startsWith('data:') && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+      if (!imageUrl.startsWith('images/')) {
+        images.push({
+          type: 'nested_external',
+          fullMatch: fullMatch,
+          alt: alt,
+          url: imageUrl,
+          linkUrl: linkUrl,
+          originalImageUrl: nestedMatch[2],
+          originalLinkUrl: nestedMatch[3]
+        });
+      }
+    }
+  }
+
+  // 匹配普通图片标签：![alt](url)，排除已经被嵌套匹配的部分
+  const plainRegex = /!\[(.*?)\]\(([^)]+)\)/g;
+  let plainMatch;
+
+  while ((plainMatch = plainRegex.exec(content)) !== null) {
+    // 检查是否已经被嵌套匹配处理过
+    const isNested = images.some(img =>
+      img.type === 'nested_external' &&
+      img.fullMatch.includes(plainMatch[0])
+    );
+
+    if (isNested) continue;
+
+    const alt = plainMatch[1];
+    let url = plainMatch[2];
 
     // 处理相对路径：/path/to/image.jpg
     if (url && url.startsWith('/') && pageBaseUrl) {
       url = pageBaseUrl + url;
-      console.log(`[Storage] Converted relative path: ${match[2]} -> ${url}`);
+      console.log(`[Storage] Converted relative path: ${plainMatch[2]} -> ${url}`);
     }
 
     // External URLs (http/https) - need download
     if (url && !url.startsWith('data:') && (url.startsWith('http://') || url.startsWith('https://'))) {
-      if (!url.startsWith('images/')) { // Not already a local path
+      if (!url.startsWith('images/')) {
         images.push({
           type: 'external',
-          fullMatch: match[0],
+          fullMatch: plainMatch[0],
           alt: alt,
           url: url
         });
@@ -178,7 +225,7 @@ function extractImageUrlsFromContent(content, pageUrl = null) {
     if (url && url.startsWith('images/')) {
       images.push({
         type: 'local',
-        fullMatch: match[0],
+        fullMatch: plainMatch[0],
         alt: alt,
         url: url
       });
@@ -203,7 +250,45 @@ async function processContentImages(apiKeyHash, content, pageUrl = null) {
 
   for (const imageInfo of images) {
     try {
-      if (imageInfo.type === 'external') {
+      if (imageInfo.type === 'nested_external') {
+        // 处理嵌套链接图片 [![alt](image-url)](link-url)
+        console.log(`Downloading nested image: ${imageInfo.url}`);
+
+        const { buffer, ext } = await downloadImage(imageInfo.url);
+        const filename = generateImageFilename(`image${ext}`);
+        const filePath = path.join(imagesDir, filename);
+
+        // Save local copy
+        await fs.writeFile(filePath, buffer);
+        const localUrl = `images/user-${apiKeyHash}/${filename}`;
+
+        // Upload to Qiniu (if configured)
+        let qiniuUrl = null;
+        if (qiniuUpload.isQiniuEnabled()) {
+          const qiniuResult = await qiniuUpload.uploadImage(buffer, filename, apiKeyHash);
+          if (qiniuResult.success) {
+            qiniuUrl = qiniuResult.url;
+            console.log(`[Qiniu] Nested image uploaded: ${qiniuUrl}`);
+          }
+        }
+
+        // Replace URL in content, keeping nested structure
+        // Use Qiniu URL for Memos display if available, otherwise use local URL
+        const displayUrl = qiniuUrl || localUrl;
+        const newNestedTag = `[![${imageInfo.alt}](${displayUrl})](${imageInfo.linkUrl})`;
+        updatedContent = updatedContent.replace(imageInfo.fullMatch, newNestedTag);
+
+        downloadedImages.push({
+          originalUrl: imageInfo.url,
+          localUrl: localUrl,
+          qiniuUrl: qiniuUrl,
+          filename: filename,
+          apiKeyHash: apiKeyHash,
+          size: buffer.length
+        });
+
+        console.log(`Saved nested image: ${filename} (${buffer.length} bytes)`);
+      } else if (imageInfo.type === 'external') {
         // Download external image
         console.log(`Downloading image: ${imageInfo.url}`);
 
@@ -225,8 +310,9 @@ async function processContentImages(apiKeyHash, content, pageUrl = null) {
           }
         }
 
-        // Replace URL in content (use local URL for local file)
-        const newImageTag = `![${imageInfo.alt}](${localUrl})`;
+        // Replace URL in content (use Qiniu URL for Memos, local URL for local file)
+        const displayUrl = qiniuUrl || localUrl;
+        const newImageTag = `![${imageInfo.alt}](${displayUrl})`;
         updatedContent = updatedContent.replace(imageInfo.fullMatch, newImageTag);
 
         downloadedImages.push({

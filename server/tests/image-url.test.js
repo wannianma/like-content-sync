@@ -24,9 +24,11 @@ describe('extractImageUrlsFromContent', () => {
     const images = extractImageUrlsFromContent(content);
 
     expect(images.length).toBe(1);
-    expect(images[0].type).toBe('external');
+    expect(images[0].type).toBe('nested_external');
     expect(images[0].url).toBe('https://example.com/device.jpg');
+    expect(images[0].linkUrl).toBe('https://example.com/link');
     expect(images[0].alt).toBe('M5StickC Plus');
+    expect(images[0].fullMatch).toBe('[![M5StickC Plus](https://example.com/device.jpg)](https://example.com/link)');
   });
 
   test('提取相对路径图片 ![alt](/path/image.jpg) 并转换为完整 URL', () => {
@@ -50,8 +52,13 @@ describe('extractImageUrlsFromContent', () => {
     const images = extractImageUrlsFromContent(content);
 
     expect(images.length).toBe(3);
-    expect(images[0].url).toBe('https://example.com/image1.jpg');
-    expect(images[1].url).toBe('https://example.com/nested.png');
+    // 嵌套图片优先提取
+    expect(images[0].type).toBe('nested_external');
+    expect(images[0].url).toBe('https://example.com/nested.png');
+    // 然后是普通图片
+    expect(images[1].type).toBe('external');
+    expect(images[1].url).toBe('https://example.com/image1.jpg');
+    expect(images[2].type).toBe('external');
     expect(images[2].url).toBe('https://example.com/image2.jpg');
   });
 
@@ -87,9 +94,12 @@ describe('extractImageUrlsFromContent', () => {
     const images = extractImageUrlsFromContent(content, pageUrl);
 
     expect(images.length).toBe(2);
-    // 第一个应该是相对路径转换后的
+    // 第一个应该是嵌套链接图片，相对路径转换后的
+    expect(images[0].type).toBe('nested_external');
     expect(images[0].url).toBe('https://github.com/anthropics/claude-desktop-buddy/raw/main/docs/device.jpg');
-    // 第二个是完整 URL
+    expect(images[0].linkUrl).toBe('https://github.com/anthropics/claude-desktop-buddy/blob/main/docs/device.jpg');
+    // 第二个是普通图片，完整 URL
+    expect(images[1].type).toBe('external');
     expect(images[1].url).toBe('https://raw.githubusercontent.com/anthropics/claude-desktop-buddy/main/docs/screenshot.png');
   });
 
@@ -124,8 +134,9 @@ describe('extractImageUrlsFromContent', () => {
     const images = extractImageUrlsFromContent(content);
 
     expect(images.length).toBe(1);
-    expect(images[0].type).toBe('external');
+    expect(images[0].type).toBe('nested_external');
     expect(images[0].url).toBe('https://example.com/demo.gif');
+    expect(images[0].linkUrl).toBe('https://example.com/page');
     expect(images[0].alt).toBe('演示动画');
   });
 
