@@ -252,6 +252,7 @@ async function processContentImages(apiKeyHash, content, pageUrl = null) {
     try {
       if (imageInfo.type === 'nested_external') {
         // 处理嵌套链接图片 [![alt](image-url)](link-url)
+        // 对于 Memos 兼容性，转换为普通图片格式（去掉外层链接）
         console.log(`Downloading nested image: ${imageInfo.url}`);
 
         const { buffer, ext } = await downloadImage(imageInfo.url);
@@ -272,11 +273,11 @@ async function processContentImages(apiKeyHash, content, pageUrl = null) {
           }
         }
 
-        // Replace URL in content, keeping nested structure
+        // 转换为普通图片格式，去掉外层链接（Memos 兼容性更好）
         // Use Qiniu URL for Memos display if available, otherwise use local URL
         const displayUrl = qiniuUrl || localUrl;
-        const newNestedTag = `[![${imageInfo.alt}](${displayUrl})](${imageInfo.linkUrl})`;
-        updatedContent = updatedContent.replace(imageInfo.fullMatch, newNestedTag);
+        const newImageTag = `![${imageInfo.alt}](${displayUrl})`;
+        updatedContent = updatedContent.replace(imageInfo.fullMatch, newImageTag);
 
         downloadedImages.push({
           originalUrl: imageInfo.url,
@@ -287,7 +288,7 @@ async function processContentImages(apiKeyHash, content, pageUrl = null) {
           size: buffer.length
         });
 
-        console.log(`Saved nested image: ${filename} (${buffer.length} bytes)`);
+        console.log(`Saved nested image as plain: ${filename} (${buffer.length} bytes)`);
       } else if (imageInfo.type === 'external') {
         // Download external image
         console.log(`Downloading image: ${imageInfo.url}`);
