@@ -108,6 +108,13 @@ async function saveToServer(data, retryCount = 0) {
     return { error: 'API not configured. Please set up in options.' };
   }
 
+  // Ensure apiEndpoint uses correct protocol for localhost
+  let apiEndpoint = settings.apiEndpoint.trim();
+  if (apiEndpoint.startsWith('https://localhost') || apiEndpoint.startsWith('https://127.0.0.1')) {
+    apiEndpoint = apiEndpoint.replace('https://', 'http://');
+    console.log('[Save] Corrected endpoint protocol:', apiEndpoint);
+  }
+
   const formData = new FormData();
   formData.append('title', data.title);
   formData.append('url', data.url);
@@ -132,8 +139,10 @@ async function saveToServer(data, retryCount = 0) {
     }
   }
 
+  console.log('[Save] Sending to:', `${apiEndpoint}/api/content`);
+
   try {
-    const response = await fetch(`${settings.apiEndpoint}/api/content`, {
+    const response = await fetch(`${apiEndpoint}/api/content`, {
       method: 'POST',
       headers: {
         'X-API-Key': settings.apiKey
@@ -144,15 +153,17 @@ async function saveToServer(data, retryCount = 0) {
     const result = await response.json();
 
     if (!response.ok) {
+      console.error('[Save] HTTP error:', response.status, result);
       if (response.status === 401) {
         return { error: 'Invalid API key. Please check your settings.' };
       }
       return { error: result.error || `Server error: ${response.status}` };
     }
 
+    console.log('[Save] Success:', result);
     return { success: true, imageUrls: result.imageUrls };
   } catch (err) {
-    console.error('API error:', err);
+    console.error('[Save] Fetch error:', err);
 
     // Retry logic
     if (retryCount < MAX_RETRIES) {
