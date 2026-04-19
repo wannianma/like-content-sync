@@ -132,21 +132,44 @@ async function downloadImage(url) {
 /**
  * Extract image URLs from markdown content
  * Includes both external URLs and local images that need Qiniu upload
+ * Handles nested link-image format: [![alt](image-url)](link-url)
+ * Handles relative paths using pageUrl as base
  */
-function extractImageUrlsFromContent(content) {
-  const regex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+function extractImageUrlsFromContent(content, pageUrl = null) {
   const images = [];
+
+  // 提取页面基础 URL（域名）
+  let pageBaseUrl = null;
+  if (pageUrl) {
+    try {
+      const parsedUrl = new URL(pageUrl);
+      pageBaseUrl = parsedUrl.origin; // 例如 https://github.com
+    } catch (e) {
+      console.warn('[Storage] Could not parse page URL:', pageUrl);
+    }
+  }
+
+  // 匹配图片标签：![alt](url)，使用非贪婪匹配避免跨越嵌套括号
+  const regex = /!\[(.*?)\]\(([^)]+)\)/g;
   let match;
 
   while ((match = regex.exec(content)) !== null) {
-    const url = match[2];
+    const alt = match[1];
+    let url = match[2];
+
+    // 处理相对路径：/path/to/image.jpg
+    if (url && url.startsWith('/') && pageBaseUrl) {
+      url = pageBaseUrl + url;
+      console.log(`[Storage] Converted relative path: ${match[2]} -> ${url}`);
+    }
+
     // External URLs (http/https) - need download
     if (url && !url.startsWith('data:') && (url.startsWith('http://') || url.startsWith('https://'))) {
       if (!url.startsWith('images/')) { // Not already a local path
         images.push({
           type: 'external',
           fullMatch: match[0],
-          alt: match[1],
+          alt: alt,
           url: url
         });
       }
@@ -156,7 +179,7 @@ function extractImageUrlsFromContent(content) {
       images.push({
         type: 'local',
         fullMatch: match[0],
-        alt: match[1],
+        alt: alt,
         url: url
       });
     }
@@ -170,8 +193,8 @@ function extractImageUrlsFromContent(content) {
  * Also upload to Qiniu for Memos display
  * Handles both external URLs and local images that need Qiniu upload
  */
-async function processContentImages(apiKeyHash, content) {
-  const images = extractImageUrlsFromContent(content);
+async function processContentImages(apiKeyHash, content, pageUrl = null) {
+  const images = extractImageUrlsFromContent(content, pageUrl);
   const imagesDir = getImagesDir(apiKeyHash);
   await ensureDir(imagesDir);
 
@@ -338,8 +361,8 @@ async function appendToDailyFile(apiKeyHash, title, url, content, tags, timestam
 
   await initUserDirs(apiKeyHash);
 
-  // Process images in content (download and replace URLs)
-  const { content: processedContent, downloadedImages } = await processContentImages(apiKeyHash, content);
+  // Process images in content (download and replace URLs), pass page URL for relative paths
+  const { content: processedContent, downloadedImages } = await processContentImages(apiKeyHash, content, url);
 
   // Merge uploaded images with downloaded images for Memos sync
   const allImages = [...uploadedImages, ...downloadedImages];
