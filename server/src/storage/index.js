@@ -6,12 +6,28 @@ const http = require('http');
 const memosSync = require('./memos');
 const qiniuUpload = require('./qiniu');
 const webdavSync = require('./webdav');
+const MarkdownIt = require('markdown-it');
 
 // Use local data directory for development, /data/notes for Docker deployment
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 
 // Max image size to download (10MB)
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+
+// Image proxy services for retry when download fails
+const IMAGE_PROXY_SERVICES = [
+  {
+    name: 'wsrv.nl',
+    buildUrl: (url) => `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=webp`
+  },
+  {
+    name: 'images.weserv.nl',
+    buildUrl: (url) => `https://images.weserv.nl/?url=${encodeURIComponent(url)}`
+  }
+];
+
+// Initialize markdown-it parser
+const md = new MarkdownIt({ html: true, linkify: true });
 
 /**
  * Get the user's base directory path
@@ -56,9 +72,44 @@ function generateImageFilename(originalName) {
 }
 
 /**
- * Download image from URL
+ * Download image from URL with proxy retry on failure
+ * @param {string} url - Image URL to download
+ * @param {boolean} useProxy - Whether to try proxy on failure (default: true)
  */
-async function downloadImage(url) {
+async function downloadImage(url, useProxy = true) {
+  // First try direct download
+  try {
+    const result = await downloadImageDirect(url);
+    return result;
+  } catch (directError) {
+    console.warn(`[Image] Direct download failed: ${directError.message}`);
+
+    if (!useProxy) {
+      throw directError;
+    }
+
+    // Try proxy services
+    for (const proxy of IMAGE_PROXY_SERVICES) {
+      try {
+        console.log(`[Image] Trying proxy: ${proxy.name}`);
+        const proxyUrl = proxy.buildUrl(url);
+        const result = await downloadImageDirect(proxyUrl);
+        console.log(`[Image] Proxy ${proxy.name} succeeded`);
+        return result;
+      } catch (proxyError) {
+        console.warn(`[Image] Proxy ${proxy.name} failed: ${proxyError.message}`);
+      }
+    }
+
+    // All attempts failed
+    throw new Error(`All download attempts failed (direct + ${IMAGE_PROXY_SERVICES.length} proxies)`);
+  }
+}
+
+/**
+ * Direct download image from URL (no proxy)
+ */
+async function downloadImageDirect(url) {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http;
 
@@ -70,7 +121,7 @@ async function downloadImage(url) {
     }, (response) => {
       // Handle redirects
       if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        downloadImage(response.headers.location).then(resolve).catch(reject);
+        downloadImageDirect(response.headers.location).then(resolve).catch(reject);
         return;
       }
 
@@ -130,9 +181,8 @@ async function downloadImage(url) {
 }
 
 /**
- * Extract image URLs from markdown content
- * Includes both external URLs and local images that need Qiniu upload
- * Handles nested link-image format: [![alt](image-url)](link-url)
+ * Extract image URLs from markdown content using markdown-it AST parser
+ * Accurately handles nested link-image format: [![alt](image-url)](link-url)
  * Handles relative paths using pageUrl as base
  */
 function extractImageUrlsFromContent(content, pageUrl = null) {
@@ -143,95 +193,139 @@ function extractImageUrlsFromContent(content, pageUrl = null) {
   if (pageUrl) {
     try {
       const parsedUrl = new URL(pageUrl);
-      pageBaseUrl = parsedUrl.origin; // 例如 https://github.com
+      pageBaseUrl = parsedUrl.origin;
     } catch (e) {
       console.warn('[Storage] Could not parse page URL:', pageUrl);
     }
   }
 
-  // 先匹配嵌套链接图片格式：[![alt](image-url)](link-url)
-  // 这种格式需要特殊处理，保持嵌套结构
-  const nestedRegex = /\[!\[(.*?)\]\(([^)]+)\)\]\(([^)]+)\)/g;
-  let nestedMatch;
+  // Parse content to AST tokens
+  const tokens = md.parse(content, {});
 
-  while ((nestedMatch = nestedRegex.exec(content)) !== null) {
-    const alt = nestedMatch[1];
-    let imageUrl = nestedMatch[2];
-    let linkUrl = nestedMatch[3];
-    const fullMatch = nestedMatch[0];
+  // Iterate through tokens
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
 
-    // 处理图片 URL 的相对路径
-    if (imageUrl && imageUrl.startsWith('/') && pageBaseUrl) {
-      imageUrl = pageBaseUrl + imageUrl;
-      console.log(`[Storage] Converted nested image relative path: ${nestedMatch[2]} -> ${imageUrl}`);
-    }
+    // Images are inside inline tokens
+    if (token.type === 'inline' && token.children) {
+      const children = token.children;
 
-    // 处理链接 URL 的相对路径
-    if (linkUrl && linkUrl.startsWith('/') && pageBaseUrl) {
-      linkUrl = pageBaseUrl + linkUrl;
-      console.log(`[Storage] Converted nested link relative path: ${nestedMatch[3]} -> ${linkUrl}`);
-    }
+      for (let j = 0; j < children.length; j++) {
+        const child = children[j];
 
-    // External URLs (http/https) - need download
-    if (imageUrl && !imageUrl.startsWith('data:') && (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
-      if (!imageUrl.startsWith('images/')) {
-        images.push({
-          type: 'nested_external',
-          fullMatch: fullMatch,
-          alt: alt,
-          url: imageUrl,
-          linkUrl: linkUrl,
-          originalImageUrl: nestedMatch[2],
-          originalLinkUrl: nestedMatch[3]
-        });
+        // Check for nested link with image: link_open -> image -> link_close
+        if (child.type === 'link_open') {
+          const linkUrl = child.attrGet('href') || '';
+
+          // Look for image inside this link
+          for (let k = j + 1; k < children.length; k++) {
+            const innerChild = children[k];
+
+            if (innerChild.type === 'link_close') {
+              break; // End of link
+            }
+
+            if (innerChild.type === 'image') {
+              // Found nested image inside link
+              const originalImageUrl = innerChild.attrGet('src') || '';
+              const originalLinkUrl = linkUrl;
+              let imageUrl = originalImageUrl;
+              const alt = innerChild.content || innerChild.attrGet('alt') || '';
+
+              // Convert relative paths for image URL
+              if (imageUrl && imageUrl.startsWith('/') && pageBaseUrl) {
+                imageUrl = pageBaseUrl + imageUrl;
+                console.log(`[Storage] AST: Converted nested image relative path -> ${imageUrl}`);
+              }
+
+              // Convert relative paths for link URL
+              let fullLinkUrl = originalLinkUrl;
+              if (fullLinkUrl && fullLinkUrl.startsWith('/') && pageBaseUrl) {
+                fullLinkUrl = pageBaseUrl + fullLinkUrl;
+                console.log(`[Storage] AST: Converted nested link relative path -> ${fullLinkUrl}`);
+              }
+
+              // Build the full markdown match string using ORIGINAL URLs (for accurate replacement)
+              const fullMatch = `[![${alt}](${originalImageUrl})](${originalLinkUrl})`;
+
+              if (imageUrl && !imageUrl.startsWith('data:') &&
+                  (imageUrl.startsWith('http://') || imageUrl.startsWith('https://'))) {
+                images.push({
+                  type: 'nested_external',
+                  fullMatch: fullMatch,
+                  alt: alt,
+                  url: imageUrl,
+                  linkUrl: fullLinkUrl
+                });
+                console.log(`[Storage] AST: Found nested image: ${imageUrl}`);
+              }
+            }
+          }
+        }
+
+        // Check for standalone image (not inside link)
+        if (child.type === 'image') {
+          // Check if previous sibling is link_open (means it's nested, already processed)
+          let isNested = false;
+          if (j > 0) {
+            // Look back for link_open
+            for (let m = j - 1; m >= 0; m--) {
+              if (children[m].type === 'link_close') break;
+              if (children[m].type === 'link_open') {
+                isNested = true;
+                break;
+              }
+            }
+          }
+
+          if (isNested) continue;
+
+          // Also check if already processed by nested detection above
+          const alreadyProcessed = images.some(img =>
+            img.type === 'nested_external' && img.url === child.attrGet('src')
+          );
+          if (alreadyProcessed) continue;
+
+          let url = child.attrGet('src') || '';
+          const alt = child.content || child.attrGet('alt') || '';
+
+          // Convert relative paths
+          if (url && url.startsWith('/') && pageBaseUrl) {
+            url = pageBaseUrl + url;
+            console.log(`[Storage] AST: Converted relative path -> ${url}`);
+          }
+
+          // Build full markdown match
+          const fullMatch = `![${alt}](${url})`;
+
+          if (url && !url.startsWith('data:') &&
+              (url.startsWith('http://') || url.startsWith('https://'))) {
+            if (!url.startsWith('images/')) {
+              images.push({
+                type: 'external',
+                fullMatch: fullMatch,
+                alt: alt,
+                url: url
+              });
+              console.log(`[Storage] AST: Found external image: ${url}`);
+            }
+          }
+
+          // Local images
+          if (url && url.startsWith('images/')) {
+            images.push({
+              type: 'local',
+              fullMatch: fullMatch,
+              alt: alt,
+              url: url
+            });
+          }
+        }
       }
     }
   }
 
-  // 匹配普通图片标签：![alt](url)，排除已经被嵌套匹配的部分
-  const plainRegex = /!\[(.*?)\]\(([^)]+)\)/g;
-  let plainMatch;
-
-  while ((plainMatch = plainRegex.exec(content)) !== null) {
-    // 检查是否已经被嵌套匹配处理过
-    const isNested = images.some(img =>
-      img.type === 'nested_external' &&
-      img.fullMatch.includes(plainMatch[0])
-    );
-
-    if (isNested) continue;
-
-    const alt = plainMatch[1];
-    let url = plainMatch[2];
-
-    // 处理相对路径：/path/to/image.jpg
-    if (url && url.startsWith('/') && pageBaseUrl) {
-      url = pageBaseUrl + url;
-      console.log(`[Storage] Converted relative path: ${plainMatch[2]} -> ${url}`);
-    }
-
-    // External URLs (http/https) - need download
-    if (url && !url.startsWith('data:') && (url.startsWith('http://') || url.startsWith('https://'))) {
-      if (!url.startsWith('images/')) {
-        images.push({
-          type: 'external',
-          fullMatch: plainMatch[0],
-          alt: alt,
-          url: url
-        });
-      }
-    }
-    // Local images (images/) - need Qiniu upload if configured
-    if (url && url.startsWith('images/')) {
-      images.push({
-        type: 'local',
-        fullMatch: plainMatch[0],
-        alt: alt,
-        url: url
-      });
-    }
-  }
-
+  console.log(`[Storage] AST parser found ${images.length} images`);
   return images;
 }
 

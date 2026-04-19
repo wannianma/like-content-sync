@@ -42,24 +42,28 @@ describe('extractImageUrlsFromContent', () => {
   });
 
   test('提取多个图片', () => {
-    const content = `
-      # 标题
-      ![图片1](https://example.com/image1.jpg)
-      一些文字
-      [![嵌套图片](https://example.com/nested.png)](https://example.com/link)
-      ![图片2](https://example.com/image2.jpg)
-    `;
+    const content = `![图片1](https://example.com/image1.jpg)
+
+一些文字
+
+[![嵌套图片](https://example.com/nested.png)](https://example.com/link)
+
+![图片2](https://example.com/image2.jpg)`;
     const images = extractImageUrlsFromContent(content);
 
     expect(images.length).toBe(3);
-    // 嵌套图片优先提取
-    expect(images[0].type).toBe('nested_external');
-    expect(images[0].url).toBe('https://example.com/nested.png');
-    // 然后是普通图片
-    expect(images[1].type).toBe('external');
-    expect(images[1].url).toBe('https://example.com/image1.jpg');
-    expect(images[2].type).toBe('external');
-    expect(images[2].url).toBe('https://example.com/image2.jpg');
+
+    // 查找嵌套图片
+    const nestedImg = images.find(img => img.type === 'nested_external');
+    expect(nestedImg).toBeDefined();
+    expect(nestedImg.url).toBe('https://example.com/nested.png');
+    expect(nestedImg.linkUrl).toBe('https://example.com/link');
+
+    // 查找普通图片
+    const externalImgs = images.filter(img => img.type === 'external');
+    expect(externalImgs.length).toBe(2);
+    expect(externalImgs.map(img => img.url)).toContain('https://example.com/image1.jpg');
+    expect(externalImgs.map(img => img.url)).toContain('https://example.com/image2.jpg');
   });
 
   test('忽略本地路径图片 images/xxx', () => {
@@ -81,15 +85,13 @@ describe('extractImageUrlsFromContent', () => {
   });
 
   test('处理复杂嵌套格式：GitHub README 风格', () => {
-    const content = `
-      # Project Title
+    const content = `# Project Title
 
-      [![Device Photo](/anthropics/claude-desktop-buddy/raw/main/docs/device.jpg)](/anthropics/claude-desktop-buddy/blob/main/docs/device.jpg)
+[![Device Photo](/anthropics/claude-desktop-buddy/raw/main/docs/device.jpg)](/anthropics/claude-desktop-buddy/blob/main/docs/device.jpg)
 
-      Some description here.
+Some description here.
 
-      ![Another Image](https://raw.githubusercontent.com/anthropics/claude-desktop-buddy/main/docs/screenshot.png)
-    `;
+![Another Image](https://raw.githubusercontent.com/anthropics/claude-desktop-buddy/main/docs/screenshot.png)`;
     const pageUrl = 'https://github.com/anthropics/claude-desktop-buddy';
     const images = extractImageUrlsFromContent(content, pageUrl);
 
@@ -141,12 +143,13 @@ describe('extractImageUrlsFromContent', () => {
   });
 
   test('混合提取 JPG、PNG、GIF 等多种图片格式', () => {
-    const content = `
-      ![JPG图片](https://example.com/photo.jpg)
-      ![PNG图片](https://example.com/screenshot.png)
-      ![GIF动画](https://example.com/animation.gif)
-      ![WebP图片](https://example.com/modern.webp)
-    `;
+    const content = `![JPG图片](https://example.com/photo.jpg)
+
+![PNG图片](https://example.com/screenshot.png)
+
+![GIF动画](https://example.com/animation.gif)
+
+![WebP图片](https://example.com/modern.webp)`;
     const images = extractImageUrlsFromContent(content);
 
     expect(images.length).toBe(4);
