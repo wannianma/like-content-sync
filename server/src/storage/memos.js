@@ -411,5 +411,6 @@ module.exports = {
   createMemo,
   uploadImageToMemos,
   normalizeBaseUrl,
+  buildApiPath,
   testMemosConnection
 };

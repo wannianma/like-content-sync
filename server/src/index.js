@@ -23,7 +23,7 @@ app.use(express.json());
 // Import routes and middleware
 const { validateApiKeyIfConfigured } = require('./middleware/auth');
 const contentRoutes = require('./routes/content');
-const testRoutes = require('./routes/test');
+const testRoutes = require('./routes/testConnection');
 const { ensureDir } = require('./storage');
 
 // Initialize data directory
